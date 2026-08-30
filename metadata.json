@@ -1,0 +1,8 @@
+{
+  "name": "BÀI GIẢNG TOÁN THPT",
+  "description": "Nền tảng bài giảng điện tử môn Toán THPT: Soạn bài giảng slide tương tác, hệ thống câu hỏi củng cố đa dạng (Trắc nghiệm, Đúng/Sai, Điền số, Tự luận) và kho lưu trữ bài giảng.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
