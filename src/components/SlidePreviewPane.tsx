@@ -600,7 +600,9 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
 
       {/* 2. SLIDE DISPLAY CANVAS (SCROLLABLE & ZOOMABLE) */}
       <div
-        className={`relative flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 custom-scrollbar overflow-x-hidden flex flex-col justify-between ${
+        className={`relative flex-1 overflow-y-auto ${
+          isFullscreen ? 'p-2 sm:p-4 lg:p-6' : 'p-3 sm:p-5 lg:p-6'
+        } custom-scrollbar overflow-x-hidden flex flex-col justify-between items-center ${
           !isDrawingMode && !isLaserMode ? 'cursor-pointer' : ''
         }`}
         onClick={(e) => {
@@ -663,7 +665,7 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
           />
         )}
 
-        {/* POWERPOINT ANIMATED SLIDE CONTAINER */}
+        {/* POWERPOINT ANIMATED SLIDE CONTAINER (OCCUPIES ~90% OF SCREEN) */}
         <AnimatePresence mode="wait" custom={slideDirection}>
           <motion.div
             key={`${slide.id || slideIndex}_${previewKey}`}
@@ -672,8 +674,9 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
             initial="initial"
             animate="animate"
             exit="exit"
-            className={`relative z-10 max-w-5xl mx-auto space-y-6 ${fontClass}`}
+            className={`relative z-10 w-[94%] sm:w-[92%] lg:w-[90%] xl:w-[90%] max-w-[94vw] mx-auto min-h-[82vh] sm:min-h-[86vh] rounded-3xl p-6 sm:p-10 lg:p-12 space-y-8 bg-slate-900/60 border border-slate-800/80 shadow-2xl backdrop-blur-xl transition-all ${fontClass}`}
             style={{
+              backgroundColor: styleConfig.backgroundColor || undefined,
               transform: `scale(${tvScale / 100})`,
               transformOrigin: 'top center',
               transition: 'transform 0.15s ease-out',
