@@ -19,6 +19,7 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 // Persistent disk file path for lessons
 const DATA_DIR = path.join(process.cwd(), 'persisted_data');
 const LESSONS_FILE = path.join(DATA_DIR, 'lessons.json');
+const DELETED_IDS_FILE = path.join(DATA_DIR, 'deleted_ids.json');
 
 // Ensure data directory exists
 if (!fs.existsSync(DATA_DIR)) {
@@ -31,12 +32,14 @@ if (!fs.existsSync(DATA_DIR)) {
 
 // In-memory / server-persisted cloud storage for teacher lessons
 const serverLessonDatabase: Map<string, MathLesson> = new Map();
+const deletedIdsSet: Set<string> = new Set();
 
 // Helper to save server database to disk
 function saveDatabaseToDisk() {
   try {
     const list = Array.from(serverLessonDatabase.values());
     fs.writeFileSync(LESSONS_FILE, JSON.stringify(list, null, 2), 'utf-8');
+    fs.writeFileSync(DELETED_IDS_FILE, JSON.stringify(Array.from(deletedIdsSet), null, 2), 'utf-8');
   } catch (err) {
     console.error('Failed to write database to disk:', err);
   }
@@ -45,12 +48,26 @@ function saveDatabaseToDisk() {
 // Helper to load server database from disk on boot
 function loadDatabaseFromDisk() {
   try {
+    // 1. Load deleted IDs list first
+    if (fs.existsSync(DELETED_IDS_FILE)) {
+      const deletedData = fs.readFileSync(DELETED_IDS_FILE, 'utf-8');
+      const parsedDeleted: string[] = JSON.parse(deletedData);
+      if (Array.isArray(parsedDeleted)) {
+        parsedDeleted.forEach((id) => deletedIdsSet.add(id));
+      }
+    }
+
+    // 2. Load lessons from disk
     if (fs.existsSync(LESSONS_FILE)) {
       const fileData = fs.readFileSync(LESSONS_FILE, 'utf-8');
       const list: MathLesson[] = JSON.parse(fileData);
-      if (Array.isArray(list) && list.length > 0) {
-        list.forEach((l) => serverLessonDatabase.set(l.id, l));
-        console.log(`[Storage] Loaded ${list.length} lessons from disk database.`);
+      if (Array.isArray(list)) {
+        list.forEach((l) => {
+          if (!deletedIdsSet.has(l.id)) {
+            serverLessonDatabase.set(l.id, l);
+          }
+        });
+        console.log(`[Storage] Loaded ${serverLessonDatabase.size} active lessons from disk database.`);
         return;
       }
     }
@@ -58,12 +75,14 @@ function loadDatabaseFromDisk() {
     console.warn('[Storage] Error loading from disk, seeding defaults:', err);
   }
 
-  // Seed with sample lessons if no disk file existed
+  // Seed with sample lessons ONLY if no lessons.json file ever existed
   SAMPLE_LESSONS.forEach((l) => {
-    serverLessonDatabase.set(l.id, l);
+    if (!deletedIdsSet.has(l.id)) {
+      serverLessonDatabase.set(l.id, l);
+    }
   });
   saveDatabaseToDisk();
-  console.log(`[Storage] Seeded ${SAMPLE_LESSONS.length} initial lessons to disk.`);
+  console.log(`[Storage] Initialized database with ${serverLessonDatabase.size} lessons.`);
 }
 
 loadDatabaseFromDisk();
@@ -83,8 +102,13 @@ app.get('/api/sample-lessons', (req, res) => {
 
 // Load all synced lessons
 app.get('/api/sync-load-lessons', (req, res) => {
-  const lessons = Array.from(serverLessonDatabase.values()).sort((a, b) => b.updatedAt - a.updatedAt);
-  res.json(lessons);
+  const lessons = Array.from(serverLessonDatabase.values())
+    .filter((l) => !deletedIdsSet.has(l.id))
+    .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+  res.json({
+    lessons,
+    deletedIds: Array.from(deletedIdsSet),
+  });
 });
 
 // Save or sync a lesson
@@ -94,6 +118,8 @@ app.post('/api/sync-save-lesson', (req, res) => {
     if (!lesson || !lesson.id) {
       return res.status(400).json({ error: 'Dữ liệu bài giảng không hợp lệ' });
     }
+    // If the user explicitly saved/created this lesson, un-delete it if was previously marked deleted
+    deletedIdsSet.delete(lesson.id);
     lesson.updatedAt = Date.now();
     serverLessonDatabase.set(lesson.id, lesson);
     saveDatabaseToDisk();
@@ -105,13 +131,18 @@ app.post('/api/sync-save-lesson', (req, res) => {
 
 // Delete a synced lesson
 app.delete('/api/sync-delete-lesson/:id', (req, res) => {
-  const id = req.params.id;
-  if (serverLessonDatabase.has(id)) {
+  try {
+    const id = req.params.id;
+    if (!id) {
+      return res.status(400).json({ error: 'Mã bài giảng không hợp lệ' });
+    }
     serverLessonDatabase.delete(id);
+    deletedIdsSet.add(id);
     saveDatabaseToDisk();
+    console.log(`[Storage] Permanently deleted lesson ${id} from server & recorded tombstone.`);
     res.json({ success: true, deletedId: id });
-  } else {
-    res.status(404).json({ error: 'Bài giảng không tồn tại' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Không thể xóa bài giảng' });
   }
 });
 

@@ -24,12 +24,16 @@ export default function App() {
       setIsSyncing(true);
       try {
         const { lessons: loadedLessons } = await StorageService.loadAllLessons();
-        if (isMounted && loadedLessons.length > 0) {
+        if (isMounted) {
           setLessons(loadedLessons);
-          setCurrentLessonId((prev) => {
-            if (prev && loadedLessons.some((l) => l.id === prev)) return prev;
-            return loadedLessons[0].id;
-          });
+          if (loadedLessons.length > 0) {
+            setCurrentLessonId((prev) => {
+              if (prev && loadedLessons.some((l) => l.id === prev)) return prev;
+              return loadedLessons[0].id;
+            });
+          } else {
+            setCurrentLessonId('');
+          }
           setIsSynced(true);
         }
       } catch (err) {
@@ -264,10 +268,11 @@ export default function App() {
     try {
       setIsSyncing(true);
       const { lessons: refreshed } = await StorageService.loadAllLessons();
-      if (refreshed.length > 0) {
-        setLessons(refreshed);
-        setIsSynced(true);
+      setLessons(refreshed);
+      if (refreshed.length > 0 && !refreshed.some((l) => l.id === currentLessonId)) {
+        setCurrentLessonId(refreshed[0].id);
       }
+      setIsSynced(true);
     } catch (err) {
       console.error('Refresh sync error:', err);
     } finally {
