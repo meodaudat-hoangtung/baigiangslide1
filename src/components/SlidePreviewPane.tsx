@@ -90,6 +90,10 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
   const [autoPlayInterval, setAutoPlayInterval] = useState<number>(0); // 0 = off, 5, 10, 15, 30
   const [autoPlayProgress, setAutoPlayProgress] = useState<number>(0);
 
+  // PowerPoint Click-to-Advance Step-by-Step Block Reveal Mode
+  const [isClickToRevealMode, setIsClickToRevealMode] = useState<boolean>(true);
+  const [revealedBlockCount, setRevealedBlockCount] = useState<number>(1);
+
   // TV 55-inch Presentation Mode font scale multiplier: 100, 125, 150 (Default TV), 175, 200
   const [tvScale, setTvScale] = useState<number>(125);
   const [isTvHighContrast, setIsTvHighContrast] = useState(true);
@@ -129,16 +133,65 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
   // Get blocks on current slide
   const blocks = getSlideBlocks(slide);
 
-  // Track slide navigation direction
+  // Track slide navigation direction & reset block reveal count
   useEffect(() => {
     if (slideIndex > prevIndexRef.current) {
       setSlideDirection(1);
+      setRevealedBlockCount(1);
     } else if (slideIndex < prevIndexRef.current) {
       setSlideDirection(-1);
+      const currBlocks = getSlideBlocks(slide);
+      setRevealedBlockCount(currBlocks.length || 1);
     }
     prevIndexRef.current = slideIndex;
     clearCanvas();
-  }, [slideIndex]);
+  }, [slideIndex, slide]);
+
+  // Advance step (next block or next slide)
+  const handleAdvanceStep = () => {
+    if (isDrawingMode) return;
+    if (zoomedImage) return;
+
+    if (isClickToRevealMode && blocks.length > 0 && revealedBlockCount < blocks.length) {
+      // Reveal next block on current slide
+      setRevealedBlockCount((prev) => Math.min(blocks.length, prev + 1));
+    } else {
+      // Advance to next slide
+      if (slideIndex < totalSlides - 1) {
+        setSlideDirection(1);
+        onSelectSlide(slideIndex + 1);
+        setRevealedBlockCount(1);
+      }
+    }
+  };
+
+  // Previous step (previous block or previous slide)
+  const handlePreviousStep = () => {
+    if (isDrawingMode) return;
+    if (zoomedImage) return;
+
+    if (isClickToRevealMode && blocks.length > 0 && revealedBlockCount > 1) {
+      // Step back 1 block on current slide
+      setRevealedBlockCount((prev) => Math.max(1, prev - 1));
+    } else {
+      // Go back to previous slide
+      if (slideIndex > 0) {
+        setSlideDirection(-1);
+        onSelectSlide(slideIndex - 1);
+      }
+    }
+  };
+
+  // Reveal all blocks on current slide immediately
+  const handleRevealAllBlocks = () => {
+    setRevealedBlockCount(blocks.length);
+  };
+
+  // Reset block progress on current slide
+  const handleResetBlockProgress = () => {
+    setRevealedBlockCount(1);
+    setPreviewKey((k) => k + 1);
+  };
 
   // Slideshow Auto-Play countdown timer
   useEffect(() => {
@@ -159,19 +212,26 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
       if (elapsed >= intervalMs) {
         elapsed = 0;
         setAutoPlayProgress(0);
-        if (slideIndex < totalSlides - 1) {
-          setSlideDirection(1);
-          onSelectSlide(slideIndex + 1);
+
+        if (isClickToRevealMode && blocks.length > 0 && revealedBlockCount < blocks.length) {
+          setRevealedBlockCount((prev) => Math.min(blocks.length, prev + 1));
         } else {
-          // Loop to beginning of lesson
-          setSlideDirection(1);
-          onSelectSlide(0);
+          if (slideIndex < totalSlides - 1) {
+            setSlideDirection(1);
+            onSelectSlide(slideIndex + 1);
+            setRevealedBlockCount(1);
+          } else {
+            // Loop to beginning of lesson
+            setSlideDirection(1);
+            onSelectSlide(0);
+            setRevealedBlockCount(1);
+          }
         }
       }
     }, tickMs);
 
     return () => clearInterval(timer);
-  }, [isAutoPlaying, autoPlayInterval, slideIndex, totalSlides, onSelectSlide]);
+  }, [isAutoPlaying, autoPlayInterval, slideIndex, totalSlides, onSelectSlide, isClickToRevealMode, blocks.length, revealedBlockCount]);
 
   const handleToggleAutoPlay = (seconds: number) => {
     if (seconds <= 0) {
@@ -250,18 +310,17 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
       } else if (e.key === 'p' || e.key === 'P') {
         setIsDrawingMode((prev) => !prev);
         setIsLaserMode(false);
-      } else if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') {
+      } else if (
+        e.key === 'ArrowRight' ||
+        e.key === 'Enter' ||
+        e.key === ' ' ||
+        e.key === 'PageDown'
+      ) {
         e.preventDefault();
-        if (slideIndex < totalSlides - 1) {
-          setSlideDirection(1);
-          onSelectSlide(slideIndex + 1);
-        }
+        handleAdvanceStep();
       } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
         e.preventDefault();
-        if (slideIndex > 0) {
-          setSlideDirection(-1);
-          onSelectSlide(slideIndex - 1);
-        }
+        handlePreviousStep();
       } else if (e.key === '+' || e.key === '=') {
         setTvScale((prev) => Math.min(200, prev + 25));
       } else if (e.key === '-' || e.key === '_') {
@@ -270,7 +329,7 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isFullscreen, slideIndex, totalSlides, zoomedImage]);
+  }, [isFullscreen, slideIndex, totalSlides, zoomedImage, isClickToRevealMode, blocks.length, revealedBlockCount, isDrawingMode]);
 
   // Canvas resize logic
   useEffect(() => {
@@ -442,6 +501,21 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
               {activePreset?.icon} {activePreset?.shortLabel || 'Trượt'}
             </span>
           </button>
+
+          {/* CLICK TO REVEAL MODE TOGGLE */}
+          <button
+            onClick={() => setIsClickToRevealMode((prev) => !prev)}
+            title="Bật/Tắt chế độ chạy hiệu ứng từng khối theo click chuột / phím Enter / phím mũi tên"
+            className={`px-2.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm ${
+              isClickToRevealMode
+                ? 'bg-pink-950/80 border border-pink-500/60 text-pink-300 ring-1 ring-pink-500/40 shadow-pink-950/50'
+                : 'bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-700'
+            }`}
+          >
+            <Sparkles className="w-3.5 h-3.5 text-pink-400" />
+            <span className="hidden lg:inline">Chiếu Từng Khối:</span>
+            <span>{isClickToRevealMode ? 'BẬT' : 'TẮT'}</span>
+          </button>
         </div>
 
         {/* Right: Interactive Presenter Tools */}
@@ -526,7 +600,26 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
 
       {/* 2. SLIDE DISPLAY CANVAS (SCROLLABLE & ZOOMABLE) */}
       <div
-        className="relative flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 custom-scrollbar overflow-x-hidden"
+        className={`relative flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 custom-scrollbar overflow-x-hidden flex flex-col justify-between ${
+          !isDrawingMode && !isLaserMode ? 'cursor-pointer' : ''
+        }`}
+        onClick={(e) => {
+          if (isDrawingMode || isLaserMode) return;
+          const target = e.target as HTMLElement | null;
+          if (!target) return;
+          if (
+            target.closest('button') ||
+            target.closest('input') ||
+            target.closest('textarea') ||
+            target.closest('select') ||
+            target.closest('a') ||
+            target.closest('.no-slide-advance') ||
+            target.closest('.interactive-control')
+          ) {
+            return;
+          }
+          handleAdvanceStep();
+        }}
         onMouseMove={(e) => {
           if (isLaserMode) {
             const rect = e.currentTarget.getBoundingClientRect();
@@ -615,6 +708,10 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
           {blocks.length > 0 && (
             <div className="space-y-6" style={{ color: textColor }}>
               {blocks.map((block, bIdx) => {
+                // If in click-to-reveal mode, only show blocks up to revealed count
+                const isVisible = !isClickToRevealMode || bIdx < revealedBlockCount;
+                if (!isVisible) return null;
+
                 const blockVariants = getBlockVariants(
                   block.animation,
                   elementAnimation,
@@ -1152,6 +1249,95 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
           )}
           </motion.div>
         </AnimatePresence>
+
+        {/* POWERPOINT STEP-BY-STEP BLOCK NAVIGATION FLOATING BAR */}
+        {blocks.length > 0 && isClickToRevealMode && (
+          <div className="no-slide-advance sticky bottom-2 left-0 right-0 mt-8 max-w-xl mx-auto w-full z-30 px-3">
+            <div className="flex items-center justify-between gap-2.5 bg-slate-900/95 border border-pink-500/40 backdrop-blur-md rounded-2xl px-4 py-2.5 shadow-2xl text-xs">
+              <div className="flex items-center gap-2">
+                <span className="font-black text-pink-300 flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-pink-400" />
+                  <span>Khối {Math.min(revealedBlockCount, blocks.length)}/{blocks.length}</span>
+                </span>
+
+                {/* Progress Dots */}
+                <div className="hidden sm:flex items-center gap-1">
+                  {blocks.map((_, idx) => (
+                    <div
+                      key={idx}
+                      className={`w-2 h-2 rounded-full transition-all ${
+                        idx < revealedBlockCount
+                          ? 'bg-pink-500 shadow-[0_0_8px_#ec4899] scale-110'
+                          : 'bg-slate-700'
+                      }`}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handlePreviousStep();
+                  }}
+                  disabled={slideIndex === 0 && revealedBlockCount <= 1}
+                  title="Lùi 1 khối (hoặc về slide trước) [Phím ⬅️]"
+                  className="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-30 text-slate-300 hover:text-white transition-all font-bold flex items-center gap-1"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Lùi</span>
+                </button>
+
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleAdvanceStep();
+                  }}
+                  title="Hiện khối tiếp theo (hoặc chuyển slide) [Click chuột / Phím Enter / Phím ➡️]"
+                  className={`px-3.5 py-1.5 rounded-xl font-bold flex items-center gap-1.5 transition-all shadow-md ${
+                    revealedBlockCount < blocks.length
+                      ? 'bg-gradient-to-r from-pink-600 via-purple-600 to-indigo-600 hover:brightness-110 text-white ring-2 ring-pink-400/50 animate-pulse'
+                      : 'bg-indigo-600 hover:bg-indigo-500 text-white'
+                  }`}
+                >
+                  <span>
+                    {revealedBlockCount < blocks.length
+                      ? 'Khối Tiếp (Enter / Click)'
+                      : 'Slide Tiếp Theo'}
+                  </span>
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+
+                {revealedBlockCount < blocks.length && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleRevealAllBlocks();
+                    }}
+                    title="Hiện toàn bộ các khối trên slide này cùng lúc"
+                    className="px-2 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-all font-semibold text-[11px]"
+                  >
+                    Hiện Hết
+                  </button>
+                )}
+
+                {revealedBlockCount > 1 && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleResetBlockProgress();
+                    }}
+                    title="Chiếu lại từ khối đầu tiên"
+                    className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-all"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* 3. ZOOMED IMAGE MODAL */}
