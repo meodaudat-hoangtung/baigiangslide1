@@ -306,6 +306,8 @@ export const StudioWorkspace: React.FC<StudioWorkspaceProps> = ({
                 onUpdateSlide({ ...currentSlide, images: nextImages });
               }}
               onOpenPrintView={() => setShowPrintModal(true)}
+              onUpdateSlide={onUpdateSlide}
+              onApplyStyleToAll={handleApplyStyleToAll}
             />
           ) : (
             <div className="flex items-center justify-center h-full p-6 text-slate-500">

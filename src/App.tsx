@@ -6,11 +6,48 @@ import { StudioWorkspace } from './components/StudioWorkspace';
 import { QuizSection } from './components/QuizSection';
 import { LessonLibrary } from './components/LessonLibrary';
 import { UploadModal } from './components/UploadModal';
-import { StorageService } from './services/storageService';
+import { StorageService, getDeletedLessonIds } from './services/storageService';
 
 export default function App() {
-  const [lessons, setLessons] = useState<MathLesson[]>(SAMPLE_LESSONS);
-  const [currentLessonId, setCurrentLessonId] = useState<string>(SAMPLE_LESSONS[0]?.id || '');
+  const [lessons, setLessons] = useState<MathLesson[]>(() => {
+    try {
+      const deletedIds = getDeletedLessonIds();
+      const local = localStorage.getItem('mathslide_lessons_v2');
+      if (local) {
+        const parsed = JSON.parse(local);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const filtered = parsed.filter((l: MathLesson) => !deletedIds.has(l.id));
+          return filtered;
+        }
+      }
+      const isInit = localStorage.getItem('mathslide_initialized_v2');
+      if (isInit === 'true') {
+        return [];
+      }
+      return SAMPLE_LESSONS.filter((l) => !deletedIds.has(l.id));
+    } catch {
+      return SAMPLE_LESSONS;
+    }
+  });
+
+  const [currentLessonId, setCurrentLessonId] = useState<string>(() => {
+    try {
+      const deletedIds = getDeletedLessonIds();
+      const local = localStorage.getItem('mathslide_lessons_v2');
+      if (local) {
+        const parsed = JSON.parse(local);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const filtered = parsed.filter((l: MathLesson) => !deletedIds.has(l.id));
+          if (filtered.length > 0) return filtered[0].id;
+        }
+      }
+      const valid = SAMPLE_LESSONS.filter((l) => !deletedIds.has(l.id));
+      return valid[0]?.id || '';
+    } catch {
+      return SAMPLE_LESSONS[0]?.id || '';
+    }
+  });
+
   const [activeTab, setActiveTab] = useState<'slides' | 'questions' | 'library'>('slides');
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [isSynced, setIsSynced] = useState(true);

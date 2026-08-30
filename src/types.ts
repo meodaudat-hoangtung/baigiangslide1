@@ -53,6 +53,39 @@ export interface SlideImage {
   widthPercent?: number; // e.g. 30, 50, 75, 100
 }
 
+export type SlideTransitionEffect =
+  | 'fade'             // Mờ dần (Fade in/out)
+  | 'slide_horizontal' // Trượt ngang (Push Left / Right)
+  | 'slide_vertical'   // Trượt dọc (Push Up / Down)
+  | 'zoom'             // Thu phóng (Zoom In / Out)
+  | 'flip'             // Lật 3D (3D Flip)
+  | 'wipe'             // Mở rèm / Quét (Wipe)
+  | 'bounce'           // Nảy sinh động (Bounce)
+  | 'none';            // Tức thì (Không hiệu ứng)
+
+export type ElementAnimationEffect =
+  | 'stagger'   // Xuất hiện tuần tự từng mục
+  | 'fade_up'   // Nổi lên từ dưới
+  | 'fade_in'   // Mờ dần hiện ra
+  | 'zoom_in'   // Phóng to nhẹ
+  | 'none';     // Hiển thị cùng lúc
+
+export type BlockAnimationEffect =
+  | 'inherit'     // Kế thừa hiệu ứng mặc định của slide
+  | 'fade_in'     // Mờ dần hiện rõ (Fade In)
+  | 'fade_up'     // Trượt từ dưới lên (Fly In - Up)
+  | 'fade_down'   // Trượt từ trên xuống (Fly In - Down)
+  | 'slide_left'  // Trượt từ bên trái qua (Fly In - Left)
+  | 'slide_right' // Trượt từ bên phải qua (Fly In - Right)
+  | 'zoom_in'     // Phóng to bung mở (Zoom In / Pop)
+  | 'zoom_out'    // Thu nhỏ xuất hiện (Zoom Out)
+  | 'bounce'      // Nảy lò xo vui nhộn (Bounce In)
+  | 'flip_x'      // Lật 3D ngang (3D Flip Horizontal)
+  | 'flip_y'      // Lật 3D dọc (3D Flip Vertical)
+  | 'spin_in'     // Xoay tròn hiện ra (Spin & Grow)
+  | 'pulse_glow'  // Phát sáng nổi bật (Glow Pulse In)
+  | 'none';       // Xuất hiện ngay (Không hiệu ứng)
+
 export interface SlideStyleConfig {
   fontFamily?: 'sans' | 'serif' | 'mono' | 'display' | 'handwriting';
   fontSize?: 'sm' | 'base' | 'lg' | 'xl';
@@ -60,6 +93,9 @@ export interface SlideStyleConfig {
   titleColor?: string;
   subtitleColor?: string;
   backgroundColor?: string;
+  transitionEffect?: SlideTransitionEffect; // Hiệu ứng chuyển slide PowerPoint
+  transitionDuration?: number; // 0.25, 0.45, 0.75 (giây)
+  elementAnimation?: ElementAnimationEffect; // Hiệu ứng xuất hiện từng khối nội dung
 }
 
 export interface SlideActivity {
@@ -145,6 +181,10 @@ export interface SlideContentBlock {
   imageAlt?: string;
   imagePosition?: 'center' | 'left' | 'right' | 'full';
   imageWidthPercent?: number; // 25, 33, 50, 75, 100
+  // PowerPoint Block-Level Custom Animation fields:
+  animation?: BlockAnimationEffect; // Hiệu ứng hoạt họa riêng biệt của khối
+  animationDelay?: number; // Độ trễ xuất hiện (giây), vd: 0, 0.2, 0.4, 0.8...
+  animationDuration?: number; // Thời lượng hiệu ứng (giây), vd: 0.35, 0.5, 0.8
 }
 
 export interface SlideSection {

@@ -38,13 +38,16 @@ import {
   Maximize,
   HelpCircle,
   Clock,
-  MessageSquare
+  MessageSquare,
+  Film,
+  Sliders
 } from 'lucide-react';
 import {
   Slide,
   SlideContentBlock,
   SlideBlockType,
-  SlideStyleConfig
+  SlideStyleConfig,
+  BlockAnimationEffect
 } from '../types';
 import {
   BLOCK_TYPES_META,
@@ -52,6 +55,7 @@ import {
   createDefaultBlock,
   createBlankSlide
 } from '../utils/slideBlocks';
+import { BLOCK_ANIMATION_PRESETS } from '../utils/slideTransitions';
 import { MathView } from './MathView';
 
 interface SlideEditorPaneProps {
@@ -132,6 +136,7 @@ export const SlideEditorPane: React.FC<SlideEditorPaneProps> = ({
 
   // States
   const [collapsedBlocks, setCollapsedBlocks] = useState<Record<string, boolean>>({});
+  const [animConfigBlockId, setAnimConfigBlockId] = useState<string | null>(null);
   const [showStylePanel, setShowStylePanel] = useState(false);
   const [showSlideOutlineModal, setShowSlideOutlineModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -675,6 +680,8 @@ export const SlideEditorPane: React.FC<SlideEditorPaneProps> = ({
           };
 
           const isCollapsed = !!collapsedBlocks[block.id];
+          const animPreset = BLOCK_ANIMATION_PRESETS.find((p) => p.id === (block.animation || 'inherit'));
+          const isAnimOpen = animConfigBlockId === block.id;
 
           return (
             <div
@@ -683,8 +690,8 @@ export const SlideEditorPane: React.FC<SlideEditorPaneProps> = ({
             >
               {/* BLOCK HEADER */}
               <div className="p-3 sm:p-3.5 bg-slate-900/95 border-b border-slate-800/80 flex items-center justify-between gap-2 flex-wrap">
-                {/* Left: Move & Type Badge */}
-                <div className="flex items-center gap-2">
+                {/* Left: Move & Type Badge & Animation Badge */}
+                <div className="flex items-center gap-2 flex-wrap">
                   <div className="flex items-center bg-slate-950 rounded-lg p-0.5 border border-slate-800">
                     <button
                       onClick={() => handleMoveBlockUp(index)}
@@ -710,6 +717,25 @@ export const SlideEditorPane: React.FC<SlideEditorPaneProps> = ({
                     <span>{index + 1}.</span>
                     <span>{meta.label}</span>
                   </span>
+
+                  {/* Individual Block Animation Selector Button */}
+                  <button
+                    onClick={() => setAnimConfigBlockId(isAnimOpen ? null : block.id)}
+                    title="Cài đặt hiệu ứng PowerPoint xuất hiện riêng cho khối này"
+                    className={`text-[11px] font-bold px-2.5 py-1 rounded-lg border flex items-center gap-1.5 transition-all ${
+                      block.animation && block.animation !== 'inherit'
+                        ? 'bg-pink-950/90 border-pink-500 text-pink-200 shadow-md ring-1 ring-pink-500/50'
+                        : isAnimOpen
+                        ? 'bg-slate-800 border-pink-500/50 text-pink-300'
+                        : 'bg-slate-950/70 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
+                    }`}
+                  >
+                    <span>{animPreset?.icon || '✨'}</span>
+                    <span className="hidden sm:inline">{animPreset?.shortLabel || 'Kế Thừa'}</span>
+                    {typeof block.animationDelay === 'number' && block.animationDelay > 0 && (
+                      <span className="font-mono text-[10px] text-pink-300 font-bold">+{block.animationDelay}s</span>
+                    )}
+                  </button>
                 </div>
 
                 {/* Right: Block Controls (Duplicate, Collapse, Delete) */}
@@ -739,6 +765,88 @@ export const SlideEditorPane: React.FC<SlideEditorPaneProps> = ({
                   </button>
                 </div>
               </div>
+
+              {/* INLINE ANIMATION DRAWER */}
+              {isAnimOpen && (
+                <div className="p-3.5 bg-slate-950/95 border-b border-pink-500/40 space-y-3 animate-in fade-in slide-in-from-top-2 duration-150">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black uppercase text-pink-300 flex items-center gap-1.5">
+                      <Film className="w-3.5 h-3.5" />
+                      <span>Hiệu Ứng Xuất Hiện Của Khối #{index + 1} ({meta.label})</span>
+                    </span>
+                    <button
+                      onClick={() => setAnimConfigBlockId(null)}
+                      className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-1.5">
+                    {BLOCK_ANIMATION_PRESETS.map((preset) => {
+                      const isSelected = (block.animation || 'inherit') === preset.id;
+                      return (
+                        <button
+                          key={preset.id}
+                          onClick={() => handleUpdateBlock(block.id, { animation: preset.id })}
+                          className={`p-2 rounded-xl border text-left text-xs transition-all ${
+                            isSelected
+                              ? 'bg-pink-600 border-pink-400 text-white font-bold shadow'
+                              : 'bg-slate-900 border-slate-800 text-slate-300 hover:border-pink-500/40 hover:bg-slate-800'
+                          }`}
+                        >
+                          <div className="text-base">{preset.icon}</div>
+                          <div className="font-semibold text-[11px] truncate">{preset.shortLabel}</div>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Delay & Duration row */}
+                  <div className="flex items-center justify-between gap-3 pt-2 border-t border-slate-800/80 flex-wrap text-xs">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-slate-400 font-medium flex items-center gap-1">
+                        <Clock className="w-3 h-3 text-pink-400" />
+                        Độ trễ xuất hiện:
+                      </span>
+                      {[0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.5].map((d) => (
+                        <button
+                          key={d}
+                          onClick={() => handleUpdateBlock(block.id, { animationDelay: d })}
+                          className={`px-2 py-0.5 rounded-lg font-mono text-[11px] font-bold ${
+                            Math.abs((block.animationDelay ?? 0) - d) < 0.05
+                              ? 'bg-pink-600 text-white'
+                              : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white'
+                          }`}
+                        >
+                          {d}s
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-slate-400 font-medium">Tốc độ hoạt họa:</span>
+                      {[
+                        { v: 0.25, l: 'Nhanh' },
+                        { v: 0.42, l: 'Chuẩn' },
+                        { v: 0.75, l: 'Mượt' },
+                      ].map((dur) => (
+                        <button
+                          key={dur.v}
+                          onClick={() => handleUpdateBlock(block.id, { animationDuration: dur.v })}
+                          className={`px-2 py-0.5 rounded-lg text-[11px] font-bold ${
+                            Math.abs((block.animationDuration ?? 0.42) - dur.v) < 0.05
+                              ? 'bg-indigo-600 text-white'
+                              : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white'
+                          }`}
+                        >
+                          {dur.l}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* BLOCK BODY (IF NOT COLLAPSED) */}
               {!isCollapsed && (

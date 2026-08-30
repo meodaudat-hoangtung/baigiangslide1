@@ -38,11 +38,20 @@ import {
   Sliders,
   Move,
   FileText,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Film
 } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import { Slide, SlideImage, SlideStyleConfig, SlideContentBlock } from '../types';
 import { BLOCK_TYPES_META, getSlideBlocks } from '../utils/slideBlocks';
 import { MathView } from './MathView';
+import { SlideTransitionToolbar } from './SlideTransitionToolbar';
+import {
+  getSlideVariants,
+  getElementVariants,
+  getBlockVariants,
+  TRANSITION_PRESETS
+} from '../utils/slideTransitions';
 
 interface SlidePreviewPaneProps {
   slide: Slide;
@@ -51,6 +60,8 @@ interface SlidePreviewPaneProps {
   onSelectSlide: (index: number) => void;
   onDeleteImage?: (imageId: string) => void;
   onOpenPrintView?: () => void;
+  onUpdateSlide?: (updatedSlide: Slide) => void;
+  onApplyStyleToAll?: (styleConfig: SlideStyleConfig) => void;
 }
 
 export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
@@ -60,6 +71,8 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
   onSelectSlide,
   onDeleteImage,
   onOpenPrintView,
+  onUpdateSlide,
+  onApplyStyleToAll,
 }) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isDrawingMode, setIsDrawingMode] = useState(false);
@@ -68,6 +81,14 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
   const [activePenColor, setActivePenColor] = useState<string>('#ef4444');
   const [showTeacherGuide, setShowTeacherGuide] = useState(false);
   const [zoomedImage, setZoomedImage] = useState<{ url: string; caption?: string; alt?: string } | null>(null);
+
+  // PowerPoint Transitions & Animations state
+  const [showTransitionsPanel, setShowTransitionsPanel] = useState(false);
+  const [slideDirection, setSlideDirection] = useState<number>(1);
+  const [previewKey, setPreviewKey] = useState<number>(0);
+  const [isAutoPlaying, setIsAutoPlaying] = useState<boolean>(false);
+  const [autoPlayInterval, setAutoPlayInterval] = useState<number>(0); // 0 = off, 5, 10, 15, 30
+  const [autoPlayProgress, setAutoPlayProgress] = useState<number>(0);
 
   // TV 55-inch Presentation Mode font scale multiplier: 100, 125, 150 (Default TV), 175, 200
   const [tvScale, setTvScale] = useState<number>(125);
@@ -83,8 +104,12 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const isDrawing = useRef(false);
+  const prevIndexRef = useRef<number>(slideIndex);
 
   const styleConfig = slide?.styleConfig || {};
+  const transitionEffect = styleConfig.transitionEffect || 'slide_horizontal';
+  const transitionDuration = styleConfig.transitionDuration || 0.45;
+  const elementAnimation = styleConfig.elementAnimation || 'stagger';
 
   const fontClass =
     styleConfig.fontFamily === 'serif'
@@ -103,6 +128,84 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
 
   // Get blocks on current slide
   const blocks = getSlideBlocks(slide);
+
+  // Track slide navigation direction
+  useEffect(() => {
+    if (slideIndex > prevIndexRef.current) {
+      setSlideDirection(1);
+    } else if (slideIndex < prevIndexRef.current) {
+      setSlideDirection(-1);
+    }
+    prevIndexRef.current = slideIndex;
+    clearCanvas();
+  }, [slideIndex]);
+
+  // Slideshow Auto-Play countdown timer
+  useEffect(() => {
+    if (!isAutoPlaying || autoPlayInterval <= 0) {
+      setAutoPlayProgress(0);
+      return;
+    }
+
+    const intervalMs = autoPlayInterval * 1000;
+    const tickMs = 100;
+    let elapsed = 0;
+
+    const timer = setInterval(() => {
+      elapsed += tickMs;
+      const progress = Math.min(100, (elapsed / intervalMs) * 100);
+      setAutoPlayProgress(progress);
+
+      if (elapsed >= intervalMs) {
+        elapsed = 0;
+        setAutoPlayProgress(0);
+        if (slideIndex < totalSlides - 1) {
+          setSlideDirection(1);
+          onSelectSlide(slideIndex + 1);
+        } else {
+          // Loop to beginning of lesson
+          setSlideDirection(1);
+          onSelectSlide(0);
+        }
+      }
+    }, tickMs);
+
+    return () => clearInterval(timer);
+  }, [isAutoPlaying, autoPlayInterval, slideIndex, totalSlides, onSelectSlide]);
+
+  const handleToggleAutoPlay = (seconds: number) => {
+    if (seconds <= 0) {
+      setIsAutoPlaying(false);
+      setAutoPlayInterval(0);
+      setAutoPlayProgress(0);
+    } else {
+      setAutoPlayInterval(seconds);
+      setIsAutoPlaying(true);
+      setAutoPlayProgress(0);
+    }
+  };
+
+  const handleUpdateCurrentStyle = (updates: Partial<SlideStyleConfig>) => {
+    if (onUpdateSlide) {
+      onUpdateSlide({
+        ...slide,
+        styleConfig: {
+          ...styleConfig,
+          ...updates,
+        },
+      });
+    }
+  };
+
+  const handleApplyStyleToAllSlides = (updates: Partial<SlideStyleConfig>) => {
+    if (onApplyStyleToAll) {
+      onApplyStyleToAll(updates);
+    }
+  };
+
+  const handlePreviewTransition = () => {
+    setPreviewKey((k) => k + 1);
+  };
 
   // Handle Fullscreen
   const toggleFullscreen = () => {
@@ -149,10 +252,16 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
         setIsLaserMode(false);
       } else if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') {
         e.preventDefault();
-        if (slideIndex < totalSlides - 1) onSelectSlide(slideIndex + 1);
+        if (slideIndex < totalSlides - 1) {
+          setSlideDirection(1);
+          onSelectSlide(slideIndex + 1);
+        }
       } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
         e.preventDefault();
-        if (slideIndex > 0) onSelectSlide(slideIndex - 1);
+        if (slideIndex > 0) {
+          setSlideDirection(-1);
+          onSelectSlide(slideIndex - 1);
+        }
       } else if (e.key === '+' || e.key === '=') {
         setTvScale((prev) => Math.min(200, prev + 25));
       } else if (e.key === '-' || e.key === '_') {
@@ -263,6 +372,9 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
     }));
   };
 
+  const slideVariants = getSlideVariants(transitionEffect, slideDirection, transitionDuration);
+  const activePreset = TRANSITION_PRESETS.find((p) => p.id === transitionEffect);
+
   return (
     <div
       ref={containerRef}
@@ -305,12 +417,31 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
           </div>
         </div>
 
-        {/* Center: Slide Indicator */}
-        <div className="text-xs font-black text-slate-300 flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-          <span>
-            Slide {slideIndex + 1} / {totalSlides}
-          </span>
+        {/* Center: Slide Indicator & PowerPoint Transition Button */}
+        <div className="flex items-center gap-2">
+          <div className="text-xs font-black text-slate-300 flex items-center gap-1.5 bg-slate-950/80 px-3 py-1.5 rounded-xl border border-slate-800">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span>
+              Slide {slideIndex + 1} / {totalSlides}
+            </span>
+          </div>
+
+          {/* POWERPOINT TRANSITION BUTTON */}
+          <button
+            onClick={() => setShowTransitionsPanel(!showTransitionsPanel)}
+            title="Tùy chỉnh hiệu ứng chuyển slide PowerPoint & hoạt họa các khối"
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm ${
+              showTransitionsPanel
+                ? 'bg-gradient-to-r from-indigo-600 to-pink-600 text-white shadow-lg shadow-indigo-600/30 ring-2 ring-indigo-400'
+                : 'bg-slate-800 text-indigo-300 hover:bg-slate-700 hover:text-white border border-indigo-500/30'
+            }`}
+          >
+            <Film className="w-3.5 h-3.5 text-pink-400" />
+            <span className="hidden sm:inline">Hiệu Ứng PowerPoint</span>
+            <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-slate-950/70 text-indigo-200 border border-indigo-500/30">
+              {activePreset?.icon} {activePreset?.shortLabel || 'Trượt'}
+            </span>
+          </button>
         </div>
 
         {/* Right: Interactive Presenter Tools */}
@@ -383,9 +514,19 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
         </div>
       </div>
 
+      {/* Auto-Play Progress Countdown Indicator */}
+      {isAutoPlaying && (
+        <div className="w-full bg-slate-950 h-1 overflow-hidden shrink-0">
+          <div
+            className="h-full bg-gradient-to-r from-emerald-500 via-teal-400 to-indigo-500 transition-all duration-100 ease-linear"
+            style={{ width: `${autoPlayProgress}%` }}
+          />
+        </div>
+      )}
+
       {/* 2. SLIDE DISPLAY CANVAS (SCROLLABLE & ZOOMABLE) */}
       <div
-        className="relative flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 custom-scrollbar"
+        className="relative flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 custom-scrollbar overflow-x-hidden"
         onMouseMove={(e) => {
           if (isLaserMode) {
             const rect = e.currentTarget.getBoundingClientRect();
@@ -394,6 +535,22 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
         }}
         onMouseLeave={() => setLaserPos(null)}
       >
+        {/* PowerPoint Transition Ribbon Panel */}
+        <SlideTransitionToolbar
+          currentSlide={slide}
+          slideIndex={slideIndex}
+          totalSlides={totalSlides}
+          isOpen={showTransitionsPanel}
+          onClose={() => setShowTransitionsPanel(false)}
+          onUpdateStyle={handleUpdateCurrentStyle}
+          onApplyToAllSlides={handleApplyStyleToAllSlides}
+          onPreviewTransition={handlePreviewTransition}
+          isAutoPlaying={isAutoPlaying}
+          autoPlayInterval={autoPlayInterval}
+          onToggleAutoPlay={handleToggleAutoPlay}
+          onUpdateSlide={onUpdateSlide}
+        />
+
         {/* Drawing Overlay Canvas */}
         <canvas
           ref={canvasRef}
@@ -413,15 +570,22 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
           />
         )}
 
-        {/* INNER SCALED SLIDE CONTENT CONTAINER */}
-        <div
-          className={`relative z-10 max-w-5xl mx-auto space-y-6 ${fontClass}`}
-          style={{
-            transform: `scale(${tvScale / 100})`,
-            transformOrigin: 'top center',
-            transition: 'transform 0.15s ease-out',
-          }}
-        >
+        {/* POWERPOINT ANIMATED SLIDE CONTAINER */}
+        <AnimatePresence mode="wait" custom={slideDirection}>
+          <motion.div
+            key={`${slide.id || slideIndex}_${previewKey}`}
+            custom={slideDirection}
+            variants={slideVariants}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            className={`relative z-10 max-w-5xl mx-auto space-y-6 ${fontClass}`}
+            style={{
+              transform: `scale(${tvScale / 100})`,
+              transformOrigin: 'top center',
+              transition: 'transform 0.15s ease-out',
+            }}
+          >
           {/* ============================================================= */}
           {/* EMPTY SLIDE STATE (KHI SLIDE TRỐNG CHƯA CÓ KHỐI NÀO)          */}
           {/* ============================================================= */}
@@ -451,9 +615,18 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
           {blocks.length > 0 && (
             <div className="space-y-6" style={{ color: textColor }}>
               {blocks.map((block, bIdx) => {
-                // -------------------------------------------------------------
-                // 1. KHỐI HÌNH ẢNH (IMAGE BLOCK)
-                // -------------------------------------------------------------
+                const blockVariants = getBlockVariants(
+                  block.animation,
+                  elementAnimation,
+                  bIdx,
+                  block.animationDelay,
+                  block.animationDuration
+                );
+
+                const renderBlockItem = () => {
+                  // -------------------------------------------------------------
+                  // 1. KHỐI HÌNH ẢNH (IMAGE BLOCK)
+                  // -------------------------------------------------------------
                 if (block.type === 'image') {
                   const widthPercent = block.imageWidthPercent || 50;
                   const position = block.imagePosition || 'center';
@@ -958,10 +1131,27 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
                 }
 
                 return null;
-              })}
+              };
+
+              const blockContent = renderBlockItem();
+              if (!blockContent) return null;
+
+              return (
+                <motion.div
+                  key={block.id || bIdx}
+                  variants={blockVariants}
+                  initial="initial"
+                  animate="animate"
+                  className="relative w-full"
+                >
+                  {blockContent}
+                </motion.div>
+              );
+            })}
             </div>
           )}
-        </div>
+          </motion.div>
+        </AnimatePresence>
       </div>
 
       {/* 3. ZOOMED IMAGE MODAL */}

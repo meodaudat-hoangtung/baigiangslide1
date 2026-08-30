@@ -102,7 +102,7 @@ export const QuizSection: React.FC<QuizSectionProps> = ({
       [qId]: {
         ...prev[qId],
         selectedOption: optionKey,
-        isSubmitted: true,
+        isSubmitted: false, // Do not auto-reveal correct answer; only eye toggle shows correct answer
       },
     }));
   };
@@ -653,16 +653,18 @@ export const QuizSection: React.FC<QuizSectionProps> = ({
                   {currentQuestion.options.map((opt) => {
                     const uAns = userAnswers[currentQuestion.id] || {};
                     const isSelected = uAns.selectedOption === opt.key;
-                    const isRevealed = !!revealedSolutions[currentQuestion.id] || uAns.isSubmitted;
+                    const isTeacherRevealed = !!revealedSolutions[currentQuestion.id];
                     let btnStyle = 'bg-slate-800/70 border-slate-700/80 hover:bg-slate-800 hover:border-slate-600 text-slate-100';
 
-                    if (isRevealed) {
+                    if (isTeacherRevealed) {
+                      // Only when teacher clicks Eye icon
                       if (opt.isCorrect) {
                         btnStyle = 'bg-emerald-950/90 border-emerald-500 text-emerald-100 font-bold ring-2 ring-emerald-500 shadow-lg';
                       } else if (isSelected && !opt.isCorrect) {
                         btnStyle = 'bg-rose-950/90 border-rose-500 text-rose-100 font-bold ring-2 ring-rose-500';
                       }
                     } else if (isSelected) {
+                      // Student selected an option, just highlight the student's choice without revealing if it's correct
                       btnStyle = 'bg-indigo-600/35 border-indigo-500 text-white font-bold ring-2 ring-indigo-500/80 shadow-md';
                     }
 
@@ -679,10 +681,10 @@ export const QuizSection: React.FC<QuizSectionProps> = ({
                         <div className="flex-1 text-sm sm:text-base leading-relaxed">
                           <MathView content={opt.text} />
                         </div>
-                        {isRevealed && opt.isCorrect && (
+                        {isTeacherRevealed && opt.isCorrect && (
                           <CheckCircle2 className="w-5 h-5 text-emerald-400 flex-shrink-0 animate-in zoom-in-50" />
                         )}
-                        {isRevealed && isSelected && !opt.isCorrect && (
+                        {isTeacherRevealed && isSelected && !opt.isCorrect && (
                           <XCircle className="w-5 h-5 text-rose-400 flex-shrink-0 animate-in zoom-in-50" />
                         )}
                       </button>
@@ -701,7 +703,7 @@ export const QuizSection: React.FC<QuizSectionProps> = ({
                   {currentQuestion.tfStatements.map((stmt, sIdx) => {
                     const uAns = userAnswers[currentQuestion.id] || {};
                     const chosen = uAns.tfAnswers?.[stmt.id];
-                    const isRevealed = !!revealedSolutions[currentQuestion.id] || uAns.isSubmitted;
+                    const isTeacherRevealed = !!revealedSolutions[currentQuestion.id];
                     const isRight = chosen === stmt.isCorrect;
 
                     return (
@@ -738,7 +740,7 @@ export const QuizSection: React.FC<QuizSectionProps> = ({
                           >
                             Sai
                           </button>
-                          {isRevealed && (
+                          {isTeacherRevealed && (
                             <span className="ml-1">
                               {isRight ? (
                                 <CheckCircle2 className="w-5 h-5 text-emerald-400" />
@@ -770,11 +772,11 @@ export const QuizSection: React.FC<QuizSectionProps> = ({
                       onClick={() => handleCheckShortAnswer(currentQuestion.id)}
                       className="px-6 py-3 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white text-xs font-bold shadow-lg shadow-amber-500/20 transition-all"
                     >
-                      Kiểm Tra Kết Quả
+                      Ghi Nhận Kết Quả
                     </button>
                   </div>
 
-                  {(revealedSolutions[currentQuestion.id] || userAnswers[currentQuestion.id]?.isSubmitted) && currentQuestion.correctShortAnswer && (
+                  {revealedSolutions[currentQuestion.id] && currentQuestion.correctShortAnswer && (
                     <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-amber-500/40 text-xs sm:text-sm flex items-center justify-between">
                       <span className="text-slate-200">
                         Đáp án chuẩn: <span className="font-mono font-bold text-amber-300 text-base ml-1">{currentQuestion.correctShortAnswer}</span>
