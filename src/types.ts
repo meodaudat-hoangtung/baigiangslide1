@@ -31,6 +31,9 @@ export interface Question {
   type: QuestionType;
   questionNumber: number;
   prompt: string; // supports LaTeX math formulas $...$ and $$...$$
+  passage?: string; // Đoạn văn dẫn / dữ kiện chung (tùy chọn)
+  imageUrl?: string; // Hình ảnh đính kèm (nếu có)
+  imageCaption?: string; // Chú thích ảnh
   difficulty: DifficultyLevel;
   targetConcept: string;
   // Specific to type:

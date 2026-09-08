@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   X,
   Save,
@@ -11,7 +11,8 @@ import {
   Eye,
   FileText,
   CheckSquare,
-  AlertCircle
+  AlertCircle,
+  Image as ImageIcon
 } from 'lucide-react';
 import {
   Question,
@@ -47,9 +48,26 @@ export const QuestionEditModal: React.FC<QuestionEditModalProps> = ({
   const [difficulty, setDifficulty] = useState<DifficultyLevel>(question?.difficulty || 'medium');
   const [targetConcept, setTargetConcept] = useState(question?.targetConcept || '');
   const [prompt, setPrompt] = useState(question?.prompt || '');
+  const [passage, setPassage] = useState(question?.passage || '');
+  const [imageUrl, setImageUrl] = useState(question?.imageUrl || '');
   const [hint, setHint] = useState(question?.hint || '');
   const [detailedSolution, setDetailedSolution] = useState(question?.detailedSolution || '');
   const [showPreview, setShowPreview] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const dataUrl = ev.target?.result as string;
+      if (dataUrl) {
+        setImageUrl(dataUrl);
+      }
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
 
   // Multiple Choice state
   const [options, setOptions] = useState<MultipleChoiceOption[]>(
@@ -219,6 +237,8 @@ export const QuestionEditModal: React.FC<QuestionEditModalProps> = ({
       type,
       difficulty,
       targetConcept: targetConcept.trim(),
+      passage: passage.trim() || undefined,
+      imageUrl: imageUrl.trim() || undefined,
       prompt: prompt.trim(),
       hint: hint.trim() || undefined,
       detailedSolution: detailedSolution.trim(),
@@ -330,29 +350,117 @@ export const QuestionEditModal: React.FC<QuestionEditModalProps> = ({
             </div>
           </div>
 
-          {/* Question Prompt */}
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="text-xs font-bold text-slate-300">
-                Nội Dung Đề Bài (Hỗ trợ định dạng LaTeX: $...$ hoặc $$...$$) <span className="text-rose-400">*</span>
-              </label>
-            </div>
-            <textarea
-              rows={3}
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              placeholder="Nhập đề bài câu hỏi... (VD: Trong các câu sau, mệnh đề nào là mệnh đề đúng? $P: \forall x \in \mathbb{R}, x^2 \ge 0$)"
-              className="w-full bg-slate-800 border border-slate-700 rounded-2xl p-4 text-sm text-white placeholder-slate-500 focus:ring-2 focus:ring-indigo-500 focus:outline-none font-mono"
-              required
-            />
-            {prompt && showPreview && (
-              <div className="mt-2 p-3.5 rounded-xl bg-slate-950 border border-indigo-500/40 text-sm text-slate-200">
-                <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider block mb-1">
-                  Xem trước đề bài:
+          {/* ========================================================= */}
+          {/* CẤU HÌNH SOẠN THẢO NỘI DUNG ĐỀ BÀI (3 PHẦN CHUẨN SƯ PHẠM) */}
+          {/* ========================================================= */}
+          <div className="space-y-4">
+            {/* 1. ĐOẠN VĂN DẪN / DỮ KIỆN CHUNG (TÙY CHỌN) */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-300 uppercase tracking-wide">
+                  1. ĐOẠN VĂN DẪN / DỮ KIỆN CHUNG (TÙY CHỌN)
+                </label>
+                <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                  NGỮ CẢNH HOẶC BẢNG BIỂU CHUNG
                 </span>
-                <MathView content={prompt} />
               </div>
-            )}
+              <textarea
+                rows={2}
+                value={passage}
+                onChange={(e) => setPassage(e.target.value)}
+                placeholder="Ví dụ: Cho hàm số bậc ba $y = f(x)$ có bảng biến thiên như sau..."
+                className="w-full bg-[#080d18] border border-slate-800 focus:border-indigo-500 rounded-xl p-3.5 text-xs sm:text-sm text-white placeholder-slate-500 focus:ring-1 focus:ring-indigo-500 focus:outline-none font-mono transition-colors"
+              />
+              {passage && showPreview && (
+                <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs sm:text-sm text-slate-300">
+                  <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider block mb-1">
+                    Xem trước đoạn văn dẫn:
+                  </span>
+                  <MathView content={passage} />
+                </div>
+              )}
+            </div>
+
+            {/* 2. HÌNH ẢNH ĐÍNH KÈM (NẾU CÓ) */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-300 uppercase tracking-wide">
+                  2. HÌNH ẢNH ĐÍNH KÈM (NẾU CÓ)
+                </label>
+              </div>
+
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleImageFileChange}
+                className="hidden"
+              />
+
+              <div className="flex items-center gap-3 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="px-3.5 py-2 rounded-xl bg-[#080d18] hover:bg-slate-800 border border-slate-800 hover:border-indigo-500/60 text-xs font-bold text-slate-200 flex items-center gap-2 transition-all shadow-sm cursor-pointer"
+                >
+                  <ImageIcon className="w-4 h-4 text-indigo-400" />
+                  <span>Chọn Ảnh Từ Máy</span>
+                </button>
+
+                {imageUrl && (
+                  <button
+                    type="button"
+                    onClick={() => setImageUrl('')}
+                    className="px-3 py-2 rounded-xl bg-rose-950/40 hover:bg-rose-900/60 border border-rose-500/40 text-rose-300 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Xóa ảnh</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Image preview thumbnail if uploaded */}
+              {imageUrl && (
+                <div className="mt-2 p-2.5 rounded-xl bg-slate-950 border border-slate-800 inline-flex flex-col gap-2 max-w-sm">
+                  <img
+                    src={imageUrl}
+                    alt="Hình ảnh đính kèm câu hỏi"
+                    className="max-h-48 max-w-full rounded-lg object-contain bg-slate-900/60 border border-slate-800"
+                  />
+                  <span className="text-[11px] text-emerald-400 font-medium flex items-center gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Đã đính kèm ảnh vào đề bài
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* 3. NỘI DUNG CÂU HỎI * (HỖ TRỢ $...$ LATEX) */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-300 uppercase tracking-wide">
+                  3. NỘI DUNG CÂU HỎI * (HỖ TRỢ $...$ LATEX)
+                </label>
+                <span className="text-[11px] font-bold text-indigo-400 font-mono tracking-wider">
+                  VD: $\INT_0^1 X^2 DX$ HOẶC $\SQRT{X-1}$
+                </span>
+              </div>
+              <textarea
+                rows={3}
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                placeholder="Nhập nội dung chính của câu hỏi... VD: Tìm tập xác định của hàm số $y = \sqrt{x-1}$"
+                className="w-full bg-[#080d18] border border-slate-800 focus:border-indigo-500 rounded-xl p-3.5 text-xs sm:text-sm text-white placeholder-slate-500 focus:ring-1 focus:ring-indigo-500 focus:outline-none font-mono transition-colors"
+                required
+              />
+              {prompt && showPreview && (
+                <div className="mt-2 p-3.5 rounded-xl bg-slate-950 border border-indigo-500/40 text-xs sm:text-sm text-slate-200">
+                  <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider block mb-1">
+                    Xem trước nội dung câu hỏi:
+                  </span>
+                  <MathView content={prompt} />
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Dynamic Content based on Type */}

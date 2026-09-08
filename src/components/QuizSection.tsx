@@ -638,6 +638,35 @@ export const QuizSection: React.FC<QuizSectionProps> = ({
                 </div>
               </div>
 
+              {/* Question Passage / Ngữ cảnh dữ kiện chung (nếu có) */}
+              {currentQuestion.passage && (
+                <div className="p-4 rounded-2xl bg-indigo-950/30 border border-indigo-500/30 text-slate-200 text-sm sm:text-base leading-relaxed space-y-1.5 shadow-sm">
+                  <div className="text-[11px] font-bold text-indigo-300 uppercase tracking-wider flex items-center gap-1.5">
+                    <FileText className="w-3.5 h-3.5 text-indigo-400" />
+                    <span>Dữ kiện chung / Ngữ cảnh:</span>
+                  </div>
+                  <div className="font-medium text-slate-100 pl-0.5">
+                    <MathView content={currentQuestion.passage} />
+                  </div>
+                </div>
+              )}
+
+              {/* Question Attached Image (nếu có) */}
+              {currentQuestion.imageUrl && (
+                <div className="flex flex-col items-center justify-center p-3 rounded-2xl bg-slate-950/90 border border-slate-800">
+                  <img
+                    src={currentQuestion.imageUrl}
+                    alt={`Hình ảnh câu ${currentQuestion.questionNumber || ''}`}
+                    className="max-h-72 max-w-full rounded-xl object-contain shadow-lg"
+                  />
+                  {currentQuestion.imageCaption && (
+                    <p className="text-xs text-slate-400 mt-2 italic text-center font-sans">
+                      {currentQuestion.imageCaption}
+                    </p>
+                  )}
+                </div>
+              )}
+
               {/* Question Prompt Content (Render KaTeX Math) */}
               <div className="text-base sm:text-lg text-slate-100 font-semibold leading-relaxed p-1">
                 <MathView content={currentQuestion.prompt} />
