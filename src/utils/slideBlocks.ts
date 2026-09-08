@@ -41,6 +41,16 @@ export const BLOCK_TYPES_META: Record<SlideBlockType, BlockTypeMeta> = {
     iconName: 'ImageIcon',
     description: 'Chèn ảnh minh họa tùy chỉnh vị trí (Trái/Giữa/Phải/Toàn khung) và kích thước'
   },
+  media: {
+    type: 'media',
+    label: 'VIDEO / AUDIO BÀI GIẢNG',
+    shortLabel: 'VIDEO/AUDIO',
+    badgeBg: 'bg-rose-500/20',
+    badgeText: 'text-rose-300 border-rose-500/30',
+    borderColor: 'border-l-rose-500',
+    iconName: 'Film',
+    description: 'Chèn Video YouTube, file video MP4 tải lên, file âm thanh Audio hoặc link Drive'
+  },
   content: {
     type: 'content',
     label: 'NỘI DUNG / LÝ THUYẾT',
@@ -472,6 +482,18 @@ export function createDefaultBlock(type: SlideBlockType, numberIndex?: number): 
         imageAlt: 'Minh họa toán học',
         imagePosition: 'center',
         imageWidthPercent: 50
+      };
+    case 'media':
+      return {
+        id: uniqueId,
+        type: 'media',
+        title: 'Video / Âm thanh bài giảng',
+        mediaUrl: '',
+        mediaCaption: 'Xem video minh họa hoặc nghe audio bài học',
+        mediaPosition: 'center',
+        mediaWidthPercent: 75,
+        mediaAutoplay: false,
+        mediaLoop: false
       };
   }
 }

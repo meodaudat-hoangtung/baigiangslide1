@@ -4,34 +4,49 @@ import {
   HelpCircle,
   FolderSync,
   Maximize2,
-  Cloud,
   CloudOff,
   Database,
   CheckCircle2,
   Loader2,
-  ShieldCheck
+  ShieldCheck,
+  PlusCircle,
+  LogIn,
+  LogOut,
+  ShieldAlert,
+  Users
 } from 'lucide-react';
-import { MathLesson } from '../types';
+import { MathLesson, AppUser } from '../types';
 
 interface NavbarProps {
   currentLesson: MathLesson | null;
   activeTab: 'slides' | 'questions' | 'library';
   setActiveTab: (tab: 'slides' | 'questions' | 'library') => void;
   onOpenUpload?: () => void;
+  onOpenCreateLesson?: () => void;
   onToggleFullscreen: () => void;
   isSynced: boolean;
   isOnline?: boolean;
   isSyncing?: boolean;
+  currentUser: AppUser | null;
+  onLogin: () => void;
+  onLogout: () => void;
+  onOpenAdminPanel: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
   currentLesson,
   activeTab,
   setActiveTab,
+  onOpenUpload,
+  onOpenCreateLesson,
   onToggleFullscreen,
   isSynced,
   isOnline = true,
   isSyncing = false,
+  currentUser,
+  onLogin,
+  onLogout,
+  onOpenAdminPanel
 }) => {
   return (
     <header className="bg-slate-950/80 backdrop-blur-xl border-b border-slate-800/80 sticky top-0 z-40 shadow-xl transition-all">
@@ -149,6 +164,85 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </>
               )}
             </div>
+
+            {/* Create New Lesson Button */}
+            {onOpenCreateLesson && (
+              <button
+                onClick={onOpenCreateLesson}
+                title="Soạn bài giảng mới"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-indigo-500 to-blue-600 hover:from-indigo-600 hover:to-blue-700 text-white font-bold text-xs shadow-md shadow-indigo-500/20 transition-all"
+              >
+                <PlusCircle className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Soạn Bài Mới</span>
+              </button>
+            )}
+
+            {/* Admin Panel Button (STRICTLY visible to admin only) */}
+            {currentUser?.role === 'admin' && (
+              <button
+                onClick={onOpenAdminPanel}
+                title="Quản lý thành viên, cấp mật khẩu & phân quyền hệ thống (Firestore)"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-950/80 hover:bg-purple-900 border border-purple-500/60 text-purple-200 font-bold text-xs shadow-md shadow-purple-900/30 transition-all"
+              >
+                <Users className="w-3.5 h-3.5 text-purple-400" />
+                <span className="hidden md:inline">Quản Trị Viên</span>
+              </button>
+            )}
+
+            {/* Auth / Account Profile */}
+            {currentUser ? (
+              <div className="flex items-center gap-2 pl-1 border-l border-slate-800">
+                <div
+                  title={`Đang đăng nhập: ${currentUser.displayName || currentUser.username} (${currentUser.role === 'admin' ? 'Quản trị viên tối cao' : 'Thành viên giáo viên'})\nEmail: ${currentUser.email}`}
+                  className="flex items-center gap-2 px-2 py-1 rounded-xl bg-slate-900/80 border border-slate-800 text-xs"
+                >
+                  {currentUser.photoURL ? (
+                    <img
+                      src={currentUser.photoURL}
+                      alt={currentUser.displayName}
+                      referrerPolicy="no-referrer"
+                      className="w-6 h-6 rounded-full border border-indigo-500/50 object-cover"
+                    />
+                  ) : (
+                    <div className={`w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs ${
+                      currentUser.role === 'admin'
+                        ? 'bg-purple-900/50 text-purple-300 border border-purple-500/40'
+                        : 'bg-indigo-900/50 text-indigo-300 border border-indigo-500/40'
+                    }`}>
+                      {currentUser.displayName?.charAt(0)?.toUpperCase() || 'U'}
+                    </div>
+                  )}
+                  <div className="hidden lg:flex flex-col text-left leading-none">
+                    <span className="font-bold text-slate-200 text-[11px] max-w-[110px] truncate">
+                      {currentUser.displayName || currentUser.username}
+                    </span>
+                    <span className={`text-[9px] font-semibold mt-0.5 ${
+                      currentUser.role === 'admin' ? 'text-purple-400' : 'text-indigo-400'
+                    }`}>
+                      {currentUser.role === 'admin' ? 'Quản Trị Viên' : 'Thành Viên'}
+                    </span>
+                  </div>
+                </div>
+
+                <button
+                  onClick={onLogout}
+                  title="Đăng xuất khỏi hệ thống"
+                  className="p-1.5 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-rose-950/30 transition-colors"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={onLogin}
+                title="Đăng nhập tài khoản Quản trị viên hoặc Thành viên"
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-md shadow-indigo-600/20 transition-all"
+              >
+                <LogIn className="w-3.5 h-3.5" />
+                <span>Đăng Nhập</span>
+              </button>
+            )}
+
 
             {/* Present Fullscreen */}
             <button

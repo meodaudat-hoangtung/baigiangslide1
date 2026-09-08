@@ -40,7 +40,10 @@ import {
   Clock,
   MessageSquare,
   Film,
-  Sliders
+  Sliders,
+  Sigma,
+  Music,
+  Video
 } from 'lucide-react';
 import {
   Slide,
@@ -57,6 +60,8 @@ import {
 } from '../utils/slideBlocks';
 import { BLOCK_ANIMATION_PRESETS } from '../utils/slideTransitions';
 import { MathView } from './MathView';
+import { MathToolbar } from './MathToolbar';
+import { MediaBlockRenderer } from './MediaBlockRenderer';
 
 interface SlideEditorPaneProps {
   slide: Slide;
@@ -119,6 +124,29 @@ const SAMPLE_MATH_DIAGRAMS = [
   },
 ];
 
+const SAMPLE_MATH_MEDIA = [
+  {
+    name: 'Định lý Pythagore (Minh họa trực quan)',
+    url: 'https://www.youtube.com/watch?v=CAkMUdeB06o',
+    caption: 'Minh họa trực quan hình học định lý Pythagore: $a^2 + b^2 = c^2$',
+  },
+  {
+    name: 'Đồ thị Parabol hàm số bậc 2',
+    url: 'https://www.youtube.com/watch?v=kYJvM9l56lQ',
+    caption: 'Sự biến thiên và đỉnh Parabol của hàm số $y = ax^2 + bx + c$',
+  },
+  {
+    name: 'Khái niệm Vectơ trong không gian',
+    url: 'https://www.youtube.com/watch?v=fNk_zzaMoSs',
+    caption: 'Vectơ trong không gian và phép cộng vectơ $\\vec{u} + \\vec{v}$',
+  },
+  {
+    name: 'Ý nghĩa số Pi trong toán học',
+    url: 'https://www.youtube.com/watch?v=HEfHFsfGXjs',
+    caption: 'Nguồn gốc và ứng dụng của hằng số $\\pi$ trong hình học',
+  },
+];
+
 export const SlideEditorPane: React.FC<SlideEditorPaneProps> = ({
   slide,
   slideIndex,
@@ -136,11 +164,18 @@ export const SlideEditorPane: React.FC<SlideEditorPaneProps> = ({
 
   // States
   const [collapsedBlocks, setCollapsedBlocks] = useState<Record<string, boolean>>({});
+  const [isBlockPaletteExpanded, setIsBlockPaletteExpanded] = useState(false);
   const [animConfigBlockId, setAnimConfigBlockId] = useState<string | null>(null);
   const [showStylePanel, setShowStylePanel] = useState(false);
   const [showSlideOutlineModal, setShowSlideOutlineModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showTeacherGuide, setShowTeacherGuide] = useState(false);
+  const [showMathToolbar, setShowMathToolbar] = useState(false);
+  const [lastActiveField, setLastActiveField] = useState<{
+    blockId: string;
+    fieldName: keyof SlideContentBlock;
+    stepIndex?: number;
+  } | null>(null);
   const [copiedNotification, setCopiedNotification] = useState<string | null>(null);
 
   // Helper to commit block list changes
@@ -248,7 +283,32 @@ export const SlideEditorPane: React.FC<SlideEditorPaneProps> = ({
     reader.readAsDataURL(file);
   };
 
-  // Toggle Collapse
+  // Handle local video/audio file upload
+  const handleMediaFileUpload = (blockId: string, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 80 * 1024 * 1024) {
+      alert('Tệp phương tiện quá lớn (>80MB). Vui lòng chọn tệp nhỏ hơn hoặc dán link YouTube / Google Drive / MP4.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (uploadEvent) => {
+      const dataUrl = uploadEvent.target?.result as string;
+      if (dataUrl) {
+        const isAudio = file.type.startsWith('audio/');
+        handleUpdateBlock(blockId, {
+          mediaUrl: dataUrl,
+          mediaType: isAudio ? 'audio' : 'video',
+          mediaCaption: isAudio ? 'Âm thanh bài giảng: ' + file.name : 'Video bài giảng: ' + file.name,
+        });
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Toggle Collapse single block
   const toggleCollapse = (blockId: string) => {
     setCollapsedBlocks((prev) => ({
       ...prev,
@@ -256,13 +316,69 @@ export const SlideEditorPane: React.FC<SlideEditorPaneProps> = ({
     }));
   };
 
+  // Toggle Collapse or Expand ALL blocks on current slide
+  const allBlocksCollapsed = blocks.length > 0 && blocks.every((b) => !!collapsedBlocks[b.id]);
+  const handleToggleAllBlocks = () => {
+    if (allBlocksCollapsed) {
+      // Expand all
+      setCollapsedBlocks({});
+    } else {
+      // Collapse all
+      const newCollapsed: Record<string, boolean> = {};
+      blocks.forEach((b) => {
+        newCollapsed[b.id] = true;
+      });
+      setCollapsedBlocks(newCollapsed);
+    }
+  };
+
   // Insert math shortcut into active textarea/input
-  const insertMathToField = (blockId: string, fieldName: keyof SlideContentBlock, latex: string) => {
+  const insertMathToField = (
+    blockId: string,
+    fieldName: keyof SlideContentBlock,
+    latex: string,
+    stepIndex?: number
+  ) => {
     const targetBlock = blocks.find((b) => b.id === blockId);
     if (!targetBlock) return;
+
+    const formatted = latex.startsWith('$') ? latex : `$${latex}$`;
+
+    if (fieldName === 'solutionSteps' && typeof stepIndex === 'number') {
+      const steps = [...(targetBlock.solutionSteps || [])];
+      const cur = steps[stepIndex] || '';
+      steps[stepIndex] = cur ? `${cur} ${formatted}` : formatted;
+      handleUpdateBlock(blockId, { solutionSteps: steps });
+      return;
+    }
+
     const currentVal = (targetBlock[fieldName] as string) || '';
-    const updatedVal = currentVal ? `${currentVal} $${latex}$` : `$${latex}$`;
+    const updatedVal = currentVal ? `${currentVal} ${formatted}` : formatted;
     handleUpdateBlock(blockId, { [fieldName]: updatedVal });
+  };
+
+  // Helper to render live LaTeX Math preview under any input field
+  const renderMathPreview = (text: string | undefined | null, label: string = 'Xem trước công thức:') => {
+    if (!text) return null;
+    const hasMath =
+      text.includes('$') ||
+      text.includes('\\') ||
+      text.includes('^') ||
+      text.includes('_') ||
+      text.includes('{') ||
+      text.includes('}') ||
+      text.includes('√');
+    if (!hasMath) return null;
+    return (
+      <div className="mt-1.5 p-2 px-3 rounded-xl bg-slate-950/80 border border-amber-500/30 space-y-1 text-xs text-amber-200 shadow-inner">
+        <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400/80 block">
+          {label}
+        </span>
+        <div className="overflow-x-auto text-xs sm:text-sm">
+          <MathView content={text} />
+        </div>
+      </div>
+    );
   };
 
   // Available block types list with icons & colors
@@ -273,6 +389,13 @@ export const SlideEditorPane: React.FC<SlideEditorPaneProps> = ({
       icon: ImageIcon,
       colorClass: 'bg-pink-600/20 text-pink-300 border-pink-500/40 hover:bg-pink-600 hover:text-white',
       desc: 'Tải ảnh từ máy hoặc dán link, chỉnh vị trí & kích thước',
+    },
+    {
+      type: 'media',
+      label: 'Video / Audio',
+      icon: Film,
+      colorClass: 'bg-rose-600/20 text-rose-300 border-rose-500/40 hover:bg-rose-600 hover:text-white',
+      desc: 'Chèn link YouTube, MP4, MP3 hoặc tải tệp video/âm thanh bài giảng',
     },
     {
       type: 'lesson_title',
@@ -436,14 +559,28 @@ export const SlideEditorPane: React.FC<SlideEditorPaneProps> = ({
             <span className="hidden md:inline">Màu & Font</span>
           </button>
 
+          {/* LaTeX Math Toolbar Toggle */}
+          <button
+            onClick={() => setShowMathToolbar(!showMathToolbar)}
+            title="Bảng hỗ trợ soạn công thức Toán LaTeX ($...$)"
+            className={`p-1.5 px-2 rounded-xl text-xs font-semibold flex items-center gap-1 transition-all ${
+              showMathToolbar
+                ? 'bg-amber-600 text-white shadow-lg shadow-amber-600/30'
+                : 'bg-slate-800 text-amber-300 hover:bg-slate-700'
+            }`}
+          >
+            <Sigma className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Toán LaTeX ($)</span>
+          </button>
+
           {/* Teacher Guide Toggle */}
           <button
             onClick={() => setShowTeacherGuide(!showTeacherGuide)}
             title="Lời thoại giảng dạy của giáo viên"
             className={`p-1.5 px-2 rounded-xl text-xs font-semibold flex items-center gap-1 transition-all ${
               showTeacherGuide
-                ? 'bg-amber-600 text-white shadow'
-                : 'bg-slate-800 text-amber-300 hover:bg-slate-700'
+                ? 'bg-indigo-600 text-white shadow'
+                : 'bg-slate-800 text-indigo-300 hover:bg-slate-700'
             }`}
           >
             <MessageSquare className="w-3.5 h-3.5" />
@@ -451,6 +588,36 @@ export const SlideEditorPane: React.FC<SlideEditorPaneProps> = ({
           </button>
         </div>
       </div>
+
+      {/* 1.5. LATEX MATH ASSISTANT TOOLBAR */}
+      {showMathToolbar && (
+        <div className="p-3 bg-slate-950/95 border-b border-amber-500/30 shrink-0">
+          <MathToolbar
+            defaultExpanded={true}
+            onInsert={(snippet) => {
+              if (lastActiveField) {
+                insertMathToField(
+                  lastActiveField.blockId,
+                  lastActiveField.fieldName,
+                  snippet,
+                  lastActiveField.stepIndex
+                );
+              } else if (blocks.length > 0) {
+                const targetBlock = blocks[0];
+                const fieldName: keyof SlideContentBlock =
+                  targetBlock.type === 'content' ||
+                  targetBlock.type === 'takeaway' ||
+                  targetBlock.type === 'note'
+                    ? 'content'
+                    : targetBlock.type === 'example' || targetBlock.type === 'practice'
+                    ? 'problem'
+                    : 'title';
+                insertMathToField(targetBlock.id, fieldName, snippet);
+              }
+            }}
+          />
+        </div>
+      )}
 
       {/* 2. STYLE DRAWER (Optional Pop-Down) */}
       {showStylePanel && (
@@ -568,40 +735,105 @@ export const SlideEditorPane: React.FC<SlideEditorPaneProps> = ({
       )}
 
       {/* 4. MAIN ACTION: ADD BLOCK PALETTE (PALETTE THÊM KHỐI) */}
-      <div className="p-3 sm:p-4 bg-slate-950/70 border-b border-slate-800 shrink-0">
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-black uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
-              <Plus className="w-3.5 h-3.5 text-emerald-400" />
-              Thêm khối vào Slide này:
-            </span>
-            <span className="text-[11px] text-slate-400 hidden sm:inline">
-              (Bấm vào nút để chèn khối tương ứng)
-            </span>
+      <div className="px-3 py-2 sm:px-4 sm:py-2.5 bg-slate-950/80 border-b border-slate-800 shrink-0 transition-all">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          {/* Left: Header label and quick block insert pills */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-1.5">
+              <span className="w-6 h-6 rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center">
+                <Plus className="w-3.5 h-3.5" />
+              </span>
+              <span className="text-xs font-black uppercase tracking-wider text-slate-200">
+                Bảng Thêm Khối:
+              </span>
+            </div>
+
+            {/* Quick block insert pills (always accessible even when collapsed) */}
+            <div className="flex items-center gap-1 overflow-x-auto py-0.5">
+              {[
+                { type: 'image' as SlideBlockType, label: 'Ảnh', icon: ImageIcon, color: 'hover:bg-pink-600/30 text-pink-300 border-pink-500/30' },
+                { type: 'content' as SlideBlockType, label: 'Lý Thuyết', icon: FileText, color: 'hover:bg-purple-600/30 text-purple-300 border-purple-500/30' },
+                { type: 'takeaway' as SlideBlockType, label: 'Ghi Nhớ', icon: Bookmark, color: 'hover:bg-indigo-600/30 text-indigo-300 border-indigo-500/30' },
+                { type: 'example' as SlideBlockType, label: 'Ví Dụ', icon: Lightbulb, color: 'hover:bg-emerald-600/30 text-emerald-300 border-emerald-500/30' },
+                { type: 'practice' as SlideBlockType, label: 'Luyện Tập', icon: Dumbbell, color: 'hover:bg-sky-600/30 text-sky-300 border-sky-500/30' },
+              ].map((quick) => {
+                const QuickIcon = quick.icon;
+                return (
+                  <button
+                    key={quick.type}
+                    type="button"
+                    onClick={() => handleAddBlock(quick.type)}
+                    title={`Chèn nhanh khối ${quick.label} vào slide`}
+                    className={`px-2 py-1 rounded-lg border text-[11px] font-bold flex items-center gap-1 bg-slate-900/90 transition-all active:scale-95 ${quick.color}`}
+                  >
+                    <QuickIcon className="w-3 h-3" />
+                    <span>+{quick.label}</span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
-          <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
-            {blocks.length} khối trên slide
-          </span>
+          {/* Right: Block counter, Bulk collapse/expand blocks, and Palette collapse toggle */}
+          <div className="flex items-center gap-1.5 ml-auto">
+            {blocks.length > 0 && (
+              <button
+                type="button"
+                onClick={handleToggleAllBlocks}
+                title={allBlocksCollapsed ? 'Mở rộng tất cả các khối trên slide' : 'Thu gọn tất cả các khối trên slide'}
+                className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700/70 text-slate-300 hover:text-white text-[11px] font-bold flex items-center gap-1 transition-all"
+              >
+                {allBlocksCollapsed ? (
+                  <>
+                    <ChevronDown className="w-3 h-3 text-indigo-400" />
+                    <span>Mở rộng ({blocks.length}) khối</span>
+                  </>
+                ) : (
+                  <>
+                    <ChevronUp className="w-3 h-3 text-amber-400" />
+                    <span>Thu gọn ({blocks.length}) khối</span>
+                  </>
+                )}
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setIsBlockPaletteExpanded(!isBlockPaletteExpanded)}
+              className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 hover:text-white text-[11px] font-bold flex items-center gap-1.5 transition-all shadow-sm"
+            >
+              <span>{isBlockPaletteExpanded ? 'Thu gọn bảng khối' : 'Mở bảng tất cả khối (12)'}</span>
+              {isBlockPaletteExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+            </button>
+          </div>
         </div>
 
-        {/* Horizontal Quick Block Selector Grid */}
-        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-1.5 sm:gap-2">
-          {BLOCK_MENU_ITEMS.map((item) => {
-            const Icon = item.icon;
-            return (
-              <button
-                key={item.type}
-                onClick={() => handleAddBlock(item.type)}
-                title={item.desc}
-                className={`flex items-center gap-1.5 px-2.5 py-2 rounded-xl border text-xs font-bold transition-all shadow-sm active:scale-95 ${item.colorClass}`}
-              >
-                <Icon className="w-3.5 h-3.5 flex-shrink-0" />
-                <span className="truncate">{item.label}</span>
-              </button>
-            );
-          })}
-        </div>
+        {/* Expanded Grid View: 12 pedagogical blocks */}
+        {isBlockPaletteExpanded && (
+          <div className="mt-3 pt-3 border-t border-slate-800/80 space-y-2">
+            <div className="text-[11px] text-slate-400 flex items-center justify-between">
+              <span>Bấm vào một loại khối để chèn ngay vào cuối slide hiện tại:</span>
+              <span className="text-emerald-400 font-semibold hidden sm:inline">12 loại khối sư phạm chuẩn</span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-1.5 sm:gap-2">
+              {BLOCK_MENU_ITEMS.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <button
+                    key={item.type}
+                    type="button"
+                    onClick={() => handleAddBlock(item.type)}
+                    title={item.desc}
+                    className={`flex items-center gap-1.5 px-2.5 py-2 rounded-xl border text-xs font-bold transition-all shadow-sm active:scale-95 ${item.colorClass}`}
+                  >
+                    <Icon className="w-3.5 h-3.5 flex-shrink-0" />
+                    <span className="truncate">{item.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* 5. SLIDE CANVAS / LIST OF BLOCKS */}
@@ -736,6 +968,16 @@ export const SlideEditorPane: React.FC<SlideEditorPaneProps> = ({
                       <span className="font-mono text-[10px] text-pink-300 font-bold">+{block.animationDelay}s</span>
                     )}
                   </button>
+
+                  {/* Block summary title (very helpful when block is collapsed) */}
+                  {block.title && (
+                    <span
+                      className="text-xs text-slate-300 font-medium truncate max-w-[140px] sm:max-w-[240px] px-2 py-0.5 rounded bg-slate-950/80 border border-slate-800"
+                      title={block.title}
+                    >
+                      {block.title}
+                    </span>
+                  )}
                 </div>
 
                 {/* Right: Block Controls (Duplicate, Collapse, Delete) */}
@@ -993,10 +1235,12 @@ export const SlideEditorPane: React.FC<SlideEditorPaneProps> = ({
                         <input
                           type="text"
                           value={block.imageCaption || ''}
+                          onFocus={() => setLastActiveField({ blockId: block.id, fieldName: 'imageCaption' })}
                           onChange={(e) => handleUpdateBlock(block.id, { imageCaption: e.target.value })}
                           placeholder="Hình 1: Minh họa định lý Pythagore với $a^2 + b^2 = c^2$"
                           className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-xs sm:text-sm text-white placeholder-slate-500 focus:ring-1 focus:ring-pink-500 outline-none"
                         />
+                        {renderMathPreview(block.imageCaption, 'Xem trước chú thích ảnh:')}
                       </div>
 
                       {/* Live Image Preview Thumbnail */}
@@ -1025,35 +1269,238 @@ export const SlideEditorPane: React.FC<SlideEditorPaneProps> = ({
                   )}
 
                   {/* ========================================================= */}
+                  {/* 1b. KHỐI VIDEO / AUDIO (MEDIA BLOCK)                      */}
+                  {/* ========================================================= */}
+                  {block.type === 'media' && (
+                    <div className="space-y-4">
+                      {/* Tiêu đề khối Media */}
+                      <div>
+                        <label className="text-xs font-bold text-rose-300 block mb-1">
+                          Tiêu đề Video / Audio bài giảng (Hỗ trợ công thức $...$):
+                        </label>
+                        <input
+                          type="text"
+                          value={block.title || ''}
+                          onFocus={() => setLastActiveField({ blockId: block.id, fieldName: 'title' })}
+                          onChange={(e) => handleUpdateBlock(block.id, { title: e.target.value })}
+                          placeholder="Video minh họa trực quan hoặc Audio giảng bài..."
+                          className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-xs sm:text-sm text-white font-bold placeholder-slate-500 focus:ring-1 focus:ring-rose-500 outline-none"
+                        />
+                        {renderMathPreview(block.title, 'Xem trước tiêu đề:')}
+                      </div>
+
+                      {/* Source options: Upload or URL */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {/* Option A: Link URL */}
+                        <div className="p-3.5 rounded-xl bg-slate-900 border border-rose-500/30 space-y-2">
+                          <label className="text-xs font-bold text-rose-300 flex items-center gap-1.5">
+                            <LinkIcon className="w-3.5 h-3.5" />
+                            <span>Đường link Video / Audio:</span>
+                          </label>
+                          <input
+                            type="url"
+                            value={block.mediaUrl || ''}
+                            onFocus={() => setLastActiveField({ blockId: block.id, fieldName: 'mediaUrl' })}
+                            onChange={(e) => handleUpdateBlock(block.id, { mediaUrl: e.target.value })}
+                            placeholder="Dán link YouTube (https://youtu.be/...), Google Drive, MP4 hoặc MP3..."
+                            className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-xs text-white placeholder-slate-500 focus:ring-1 focus:ring-rose-500 outline-none font-mono"
+                          />
+                          <p className="text-[10px] text-slate-400">
+                            💡 Tự động nhận diện YouTube, Google Drive preview, link trực tiếp file MP4, MP3.
+                          </p>
+                        </div>
+
+                        {/* Option B: File Upload */}
+                        <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-700 space-y-2">
+                          <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                            <Upload className="w-3.5 h-3.5 text-rose-400" />
+                            <span>Hoặc tải tệp từ máy tính:</span>
+                          </label>
+                          <input
+                            type="file"
+                            accept="video/*,audio/*"
+                            onChange={(e) => handleMediaFileUpload(block.id, e)}
+                            className="w-full text-xs text-slate-300 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-rose-600 file:text-white hover:file:bg-rose-500 cursor-pointer"
+                          />
+                          <p className="text-[10px] text-slate-400">
+                            Hỗ trợ MP4, WebM, MP3, WAV, OGG...
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Sample Math Videos */}
+                      <div className="space-y-1.5">
+                        <span className="text-[11px] text-slate-400 font-semibold">
+                          💡 Hoặc chọn nhanh video toán học mẫu:
+                        </span>
+                        <div className="flex flex-wrap gap-1.5">
+                          {SAMPLE_MATH_MEDIA.map((sample, sIdx) => (
+                            <button
+                              key={sIdx}
+                              type="button"
+                              onClick={() =>
+                                handleUpdateBlock(block.id, {
+                                  mediaUrl: sample.url,
+                                  mediaCaption: sample.caption,
+                                  title: sample.name,
+                                })
+                              }
+                              className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 hover:border-rose-500/40 text-[11px] text-slate-300 hover:text-white transition-all truncate max-w-xs"
+                            >
+                              {sample.name}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Media Caption (Hỗ trợ LaTeX $...$) */}
+                      <div>
+                        <label className="text-xs font-bold text-slate-300 block mb-1">
+                          Chú thích Video / Audio (Hỗ trợ công thức $...$):
+                        </label>
+                        <input
+                          type="text"
+                          value={block.mediaCaption || ''}
+                          onFocus={() => setLastActiveField({ blockId: block.id, fieldName: 'mediaCaption' })}
+                          onChange={(e) => handleUpdateBlock(block.id, { mediaCaption: e.target.value })}
+                          placeholder="Ví dụ: Quan sát sự biến thiên của đồ thị khi hệ số $a > 0$..."
+                          className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-xs text-white placeholder-slate-500 focus:ring-1 focus:ring-rose-500 outline-none"
+                        />
+                        {renderMathPreview(block.mediaCaption, 'Xem trước chú thích:')}
+                      </div>
+
+                      {/* Alignment & Width & Playback controls */}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3.5 rounded-xl bg-slate-900/80 border border-slate-800">
+                        {/* Position */}
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-bold text-slate-300 block">Vị trí căn chỉnh:</label>
+                          <div className="grid grid-cols-4 gap-1">
+                            {[
+                              { id: 'left', label: 'Trái', icon: AlignLeft },
+                              { id: 'center', label: 'Giữa', icon: AlignCenter },
+                              { id: 'right', label: 'Phải', icon: AlignRight },
+                              { id: 'full', label: 'Toàn khung', icon: Maximize },
+                            ].map((pos) => {
+                              const PosIcon = pos.icon;
+                              const isActive = (block.mediaPosition || 'center') === pos.id;
+                              return (
+                                <button
+                                  key={pos.id}
+                                  type="button"
+                                  onClick={() => handleUpdateBlock(block.id, { mediaPosition: pos.id as any })}
+                                  className={`py-1.5 px-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 border transition-all ${
+                                    isActive
+                                      ? 'bg-rose-600 text-white border-rose-400 shadow'
+                                      : 'bg-slate-950 text-slate-400 border-slate-700 hover:text-white'
+                                  }`}
+                                >
+                                  <PosIcon className="w-3 h-3" />
+                                  <span>{pos.label}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* Width */}
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-bold text-slate-300 block">Kích thước chiều rộng:</label>
+                          <div className="grid grid-cols-4 gap-1">
+                            {[
+                              { val: 33, label: '33% (Nhỏ)' },
+                              { val: 50, label: '50% (Vừa)' },
+                              { val: 75, label: '75% (Lớn)' },
+                              { val: 100, label: '100% (Đầy)' },
+                            ].map((w) => {
+                              const isActive = (block.mediaWidthPercent || 75) === w.val;
+                              return (
+                                <button
+                                  key={w.val}
+                                  type="button"
+                                  onClick={() => handleUpdateBlock(block.id, { mediaWidthPercent: w.val })}
+                                  className={`py-1.5 px-2 rounded-lg text-xs font-semibold border text-center transition-all ${
+                                    isActive
+                                      ? 'bg-rose-600 text-white border-rose-400 shadow'
+                                      : 'bg-slate-950 text-slate-400 border-slate-700 hover:text-white'
+                                  }`}
+                                >
+                                  {w.label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* Playback Toggles */}
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-bold text-slate-300 block">Tùy chọn phát:</label>
+                          <div className="flex flex-col gap-1.5 pt-1">
+                            <label className="flex items-center gap-1.5 text-xs text-slate-300 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={!!block.mediaAutoplay}
+                                onChange={(e) => handleUpdateBlock(block.id, { mediaAutoplay: e.target.checked })}
+                                className="rounded text-rose-600 focus:ring-rose-500 bg-slate-950 border-slate-700"
+                              />
+                              <span>Tự động phát (Autoplay)</span>
+                            </label>
+                            <label className="flex items-center gap-1.5 text-xs text-slate-300 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={!!block.mediaLoop}
+                                onChange={(e) => handleUpdateBlock(block.id, { mediaLoop: e.target.checked })}
+                                className="rounded text-rose-600 focus:ring-rose-500 bg-slate-950 border-slate-700"
+                              />
+                              <span>Lặp lại liên tục (Loop)</span>
+                            </label>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Live Media Player Preview */}
+                      <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800 space-y-2">
+                        <span className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">
+                          Xem trước trình phát video / audio trên slide:
+                        </span>
+                        <MediaBlockRenderer block={block} interactive={false} />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ========================================================= */}
                   {/* 2. KHỐI TIÊU ĐỀ BÀI HỌC (LESSON TITLE BLOCK)             */}
                   {/* ========================================================= */}
                   {block.type === 'lesson_title' && (
                     <div className="space-y-3">
                       <div>
                         <label className="text-xs font-bold text-blue-300 block mb-1">
-                          Tiêu đề chính bài học / chuyên đề:
+                          Tiêu đề chính bài học / chuyên đề (Hỗ trợ công thức $...$):
                         </label>
                         <input
                           type="text"
                           value={block.title || ''}
+                          onFocus={() => setLastActiveField({ blockId: block.id, fieldName: 'title' })}
                           onChange={(e) => handleUpdateBlock(block.id, { title: e.target.value })}
                           placeholder="BÀI 1: MỆNH ĐỀ TOÁN HỌC"
                           className="w-full bg-slate-900 border border-blue-500/40 rounded-xl p-2.5 text-sm sm:text-base font-bold text-white uppercase placeholder-slate-500 focus:ring-1 focus:ring-blue-500 outline-none"
                         />
+                        {renderMathPreview(block.title, 'Xem trước tiêu đề:')}
                       </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <div>
                           <label className="text-xs font-bold text-slate-300 block mb-1">
-                            Phụ đề / Phân môn:
+                            Phụ đề / Phân môn (Hỗ trợ $...$):
                           </label>
                           <input
                             type="text"
                             value={block.subtitle || ''}
+                            onFocus={() => setLastActiveField({ blockId: block.id, fieldName: 'subtitle' })}
                             onChange={(e) => handleUpdateBlock(block.id, { subtitle: e.target.value })}
                             placeholder="Chương 1: Mệnh đề và tập hợp • Toán 10"
                             className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2 text-xs sm:text-sm text-white placeholder-slate-500 focus:ring-1 focus:ring-blue-500 outline-none"
                           />
+                          {renderMathPreview(block.subtitle, 'Xem trước phụ đề:')}
                         </div>
 
                         <div>
@@ -1063,10 +1510,12 @@ export const SlideEditorPane: React.FC<SlideEditorPaneProps> = ({
                           <input
                             type="text"
                             value={block.keyFormula || ''}
+                            onFocus={() => setLastActiveField({ blockId: block.id, fieldName: 'keyFormula' })}
                             onChange={(e) => handleUpdateBlock(block.id, { keyFormula: e.target.value })}
-                            placeholder="a^2 + b^2 = c^2"
+                            placeholder="a^2 + b^2 = c^2 hoặc f(x) = ax^2 + bx + c"
                             className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2 text-xs sm:text-sm text-amber-300 font-mono placeholder-slate-500 focus:ring-1 focus:ring-blue-500 outline-none"
                           />
+                          {renderMathPreview(`$$${block.keyFormula}$$`, 'Xem trước công thức trọng tâm:')}
                         </div>
                       </div>
                     </div>
@@ -1080,28 +1529,37 @@ export const SlideEditorPane: React.FC<SlideEditorPaneProps> = ({
                       {/* Example Title & Problem */}
                       <div>
                         <label className="text-xs font-bold text-emerald-300 block mb-1">
-                          Tên ví dụ:
+                          Tên ví dụ (Hỗ trợ $...$):
                         </label>
                         <input
                           type="text"
                           value={block.title || ''}
+                          onFocus={() => setLastActiveField({ blockId: block.id, fieldName: 'title' })}
                           onChange={(e) => handleUpdateBlock(block.id, { title: e.target.value })}
                           placeholder="Ví dụ 1: Tìm nghiệm của phương trình"
                           className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2 text-xs sm:text-sm text-white font-bold placeholder-slate-500 focus:ring-1 focus:ring-emerald-500 outline-none"
                         />
+                        {renderMathPreview(block.title, 'Xem trước tên ví dụ:')}
                       </div>
 
                       <div>
-                        <label className="text-xs font-bold text-slate-300 block mb-1">
-                          Đề bài ví dụ (Hỗ trợ công thức $...$):
-                        </label>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-xs font-bold text-slate-300">
+                            Đề bài ví dụ (Hỗ trợ công thức $...$ và $$...$$):
+                          </label>
+                          <span className="text-[10px] text-amber-400 font-semibold">
+                            💡 Mẹo: Đặt công thức trong $...$
+                          </span>
+                        </div>
                         <textarea
                           value={block.problem || ''}
+                          onFocus={() => setLastActiveField({ blockId: block.id, fieldName: 'problem' })}
                           onChange={(e) => handleUpdateBlock(block.id, { problem: e.target.value })}
                           placeholder="Giải phương trình bậc hai sau: $2x^2 - 5x + 2 = 0$"
                           rows={2}
                           className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-xs sm:text-sm text-white placeholder-slate-500 focus:ring-1 focus:ring-emerald-500 outline-none leading-relaxed"
                         />
+                        {renderMathPreview(block.problem, 'Xem trước đề bài:')}
                       </div>
 
                       {/* Step by step solutions */}
@@ -1109,13 +1567,13 @@ export const SlideEditorPane: React.FC<SlideEditorPaneProps> = ({
                         <div className="flex items-center justify-between">
                           <label className="text-xs font-bold text-emerald-300 flex items-center gap-1.5">
                             <Sparkles className="w-3.5 h-3.5" />
-                            <span>Các bước giải chi tiết (Hiện từng bước khi trình chiếu):</span>
+                            <span>Các bước giải chi tiết (Hỗ trợ công thức $...$, hiện từng bước khi trình chiếu):</span>
                           </label>
                           <button
                             onClick={() => {
                               const steps = block.solutionSteps || [];
                               handleUpdateBlock(block.id, {
-                                solutionSteps: [...steps, `Bước ${steps.length + 1}: Biến đổi...`],
+                                solutionSteps: [...steps, `Bước ${steps.length + 1}: Biến đổi phương trình...`],
                               });
                             }}
                             className="px-2 py-1 rounded-lg bg-emerald-600/20 hover:bg-emerald-600 border border-emerald-500/40 text-emerald-300 hover:text-white text-[11px] font-bold flex items-center gap-1 transition-all"
@@ -1126,29 +1584,39 @@ export const SlideEditorPane: React.FC<SlideEditorPaneProps> = ({
                         </div>
 
                         {(block.solutionSteps || []).map((step, sIdx) => (
-                          <div key={sIdx} className="flex items-start gap-2">
-                            <span className="text-xs font-bold text-emerald-400 px-2 py-2 rounded-lg bg-slate-900 border border-slate-800 shrink-0">
-                              B{sIdx + 1}
-                            </span>
-                            <textarea
-                              value={step}
-                              onChange={(e) => {
-                                const newSteps = [...(block.solutionSteps || [])];
-                                newSteps[sIdx] = e.target.value;
-                                handleUpdateBlock(block.id, { solutionSteps: newSteps });
-                              }}
-                              rows={1}
-                              className="flex-1 bg-slate-900 border border-slate-700 rounded-xl p-2 text-xs sm:text-sm text-white placeholder-slate-500 focus:ring-1 focus:ring-emerald-500 outline-none"
-                            />
-                            <button
-                              onClick={() => {
-                                const newSteps = (block.solutionSteps || []).filter((_, idx) => idx !== sIdx);
-                                handleUpdateBlock(block.id, { solutionSteps: newSteps });
-                              }}
-                              className="p-2 rounded-lg bg-slate-900 hover:bg-rose-600 text-slate-400 hover:text-white text-xs transition-colors shrink-0"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                          <div key={sIdx} className="space-y-1">
+                            <div className="flex items-start gap-2">
+                              <span className="text-xs font-bold text-emerald-400 px-2 py-2 rounded-lg bg-slate-900 border border-slate-800 shrink-0">
+                                B{sIdx + 1}
+                              </span>
+                              <textarea
+                                value={step}
+                                onFocus={() =>
+                                  setLastActiveField({
+                                    blockId: block.id,
+                                    fieldName: 'solutionSteps',
+                                    stepIndex: sIdx,
+                                  })
+                                }
+                                onChange={(e) => {
+                                  const newSteps = [...(block.solutionSteps || [])];
+                                  newSteps[sIdx] = e.target.value;
+                                  handleUpdateBlock(block.id, { solutionSteps: newSteps });
+                                }}
+                                rows={1}
+                                className="flex-1 bg-slate-900 border border-slate-700 rounded-xl p-2 text-xs sm:text-sm text-white placeholder-slate-500 focus:ring-1 focus:ring-emerald-500 outline-none"
+                              />
+                              <button
+                                onClick={() => {
+                                  const newSteps = (block.solutionSteps || []).filter((_, idx) => idx !== sIdx);
+                                  handleUpdateBlock(block.id, { solutionSteps: newSteps });
+                                }}
+                                className="p-2 rounded-lg bg-slate-900 hover:bg-rose-600 text-slate-400 hover:text-white text-xs transition-colors shrink-0"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                            {renderMathPreview(step, `Xem trước Bước ${sIdx + 1}:`)}
                           </div>
                         ))}
                       </div>
@@ -1156,15 +1624,17 @@ export const SlideEditorPane: React.FC<SlideEditorPaneProps> = ({
                       {/* Final Answer */}
                       <div>
                         <label className="text-xs font-bold text-emerald-300 block mb-1">
-                          Đáp số / Kết luận ví dụ:
+                          Đáp số / Kết luận ví dụ (Hỗ trợ công thức $...$):
                         </label>
                         <input
                           type="text"
                           value={block.finalAnswer || ''}
+                          onFocus={() => setLastActiveField({ blockId: block.id, fieldName: 'finalAnswer' })}
                           onChange={(e) => handleUpdateBlock(block.id, { finalAnswer: e.target.value })}
                           placeholder="Vậy tập nghiệm của phương trình là $S = \{2; \frac{1}{2}\}$"
                           className="w-full bg-slate-900 border border-emerald-500/40 rounded-xl p-2 text-xs sm:text-sm text-emerald-100 font-bold placeholder-slate-500 focus:ring-1 focus:ring-emerald-500 outline-none"
                         />
+                        {renderMathPreview(block.finalAnswer, 'Xem trước đáp số:')}
                       </div>
                     </div>
                   )}
@@ -1176,56 +1646,64 @@ export const SlideEditorPane: React.FC<SlideEditorPaneProps> = ({
                     <div className="space-y-3">
                       <div>
                         <label className="text-xs font-bold text-sky-300 block mb-1">
-                          Tiêu đề bài tập:
+                          Tiêu đề bài tập (Hỗ trợ $...$):
                         </label>
                         <input
                           type="text"
                           value={block.title || ''}
+                          onFocus={() => setLastActiveField({ blockId: block.id, fieldName: 'title' })}
                           onChange={(e) => handleUpdateBlock(block.id, { title: e.target.value })}
                           placeholder={block.type === 'practice' ? 'Luyện tập 1' : 'Vận dụng 1: Bài toán thực tế'}
                           className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2 text-xs sm:text-sm text-white font-bold placeholder-slate-500 focus:ring-1 focus:ring-sky-500 outline-none"
                         />
+                        {renderMathPreview(block.title, 'Xem trước tiêu đề:')}
                       </div>
 
                       <div>
                         <label className="text-xs font-bold text-slate-300 block mb-1">
-                          Đề bài (Hỗ trợ công thức $...$):
+                          Đề bài (Hỗ trợ công thức $...$ và $$...$$):
                         </label>
                         <textarea
                           value={block.problem || ''}
+                          onFocus={() => setLastActiveField({ blockId: block.id, fieldName: 'problem' })}
                           onChange={(e) => handleUpdateBlock(block.id, { problem: e.target.value })}
                           placeholder="Nhập nội dung câu hỏi hoặc bài toán rèn luyện..."
                           rows={2}
                           className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-xs sm:text-sm text-white placeholder-slate-500 focus:ring-1 focus:ring-sky-500 outline-none leading-relaxed"
                         />
+                        {renderMathPreview(block.problem, 'Xem trước đề bài:')}
                       </div>
 
                       {block.type === 'practice' && (
                         <div>
                           <label className="text-xs font-bold text-amber-300 block mb-1">
-                            Gợi ý phương pháp (Hint):
+                            Gợi ý phương pháp (Hint) (Hỗ trợ $...$):
                           </label>
                           <input
                             type="text"
                             value={block.hint || ''}
+                            onFocus={() => setLastActiveField({ blockId: block.id, fieldName: 'hint' })}
                             onChange={(e) => handleUpdateBlock(block.id, { hint: e.target.value })}
                             placeholder="Áp dụng hằng đẳng thức hoặc đặt ẩn phụ $t = x^2$..."
                             className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2 text-xs sm:text-sm text-amber-200 placeholder-slate-500 focus:ring-1 focus:ring-sky-500 outline-none"
                           />
+                          {renderMathPreview(block.hint, 'Xem trước gợi ý:')}
                         </div>
                       )}
 
                       <div>
                         <label className="text-xs font-bold text-emerald-300 block mb-1">
-                          Hướng dẫn giải / Đáp án:
+                          Hướng dẫn giải / Đáp án (Hỗ trợ công thức $...$):
                         </label>
                         <textarea
                           value={block.solution || ''}
+                          onFocus={() => setLastActiveField({ blockId: block.id, fieldName: 'solution' })}
                           onChange={(e) => handleUpdateBlock(block.id, { solution: e.target.value })}
                           placeholder="Trình bày lời giải chi tiết..."
                           rows={2}
                           className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-xs sm:text-sm text-emerald-100 placeholder-slate-500 focus:ring-1 focus:ring-sky-500 outline-none leading-relaxed"
                         />
+                        {renderMathPreview(block.solution, 'Xem trước lời giải:')}
                       </div>
                     </div>
                   )}
@@ -1240,15 +1718,17 @@ export const SlideEditorPane: React.FC<SlideEditorPaneProps> = ({
                     <div className="space-y-3">
                       <div>
                         <label className="text-xs font-bold text-slate-300 block mb-1">
-                          Tiêu đề khối:
+                          Tiêu đề khối (Hỗ trợ $...$):
                         </label>
                         <input
                           type="text"
                           value={block.title || ''}
+                          onFocus={() => setLastActiveField({ blockId: block.id, fieldName: 'title' })}
                           onChange={(e) => handleUpdateBlock(block.id, { title: e.target.value })}
                           placeholder="Tiêu đề khối..."
                           className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2 text-xs sm:text-sm text-white font-bold placeholder-slate-500 focus:ring-1 focus:ring-indigo-500 outline-none"
                         />
+                        {renderMathPreview(block.title, 'Xem trước tiêu đề:')}
                       </div>
 
                       {/* Math Shortcuts Quick Bar */}
@@ -1277,6 +1757,7 @@ export const SlideEditorPane: React.FC<SlideEditorPaneProps> = ({
                         </label>
                         <textarea
                           value={block.content || ''}
+                          onFocus={() => setLastActiveField({ blockId: block.id, fieldName: 'content' })}
                           onChange={(e) => handleUpdateBlock(block.id, { content: e.target.value })}
                           placeholder="Nhập nội dung kiến thức, định nghĩa, định lý..."
                           rows={4}
@@ -1285,16 +1766,7 @@ export const SlideEditorPane: React.FC<SlideEditorPaneProps> = ({
                       </div>
 
                       {/* Live Math Preview */}
-                      {block.content && (
-                        <div className="p-3 rounded-xl bg-slate-900/60 border border-slate-800 space-y-1">
-                          <span className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">
-                            Xem trước công thức trực tiếp:
-                          </span>
-                          <div className="text-xs sm:text-sm text-slate-200">
-                            <MathView content={block.content} />
-                          </div>
-                        </div>
-                      )}
+                      {renderMathPreview(block.content, 'Xem trước công thức trực tiếp:')}
                     </div>
                   )}
 
@@ -1305,23 +1777,26 @@ export const SlideEditorPane: React.FC<SlideEditorPaneProps> = ({
                     <div className="space-y-3">
                       <div>
                         <label className="text-xs font-bold text-amber-300 block mb-1">
-                          Tiêu đề hoạt động:
+                          Tiêu đề hoạt động (Hỗ trợ $...$):
                         </label>
                         <input
                           type="text"
                           value={block.title || ''}
+                          onFocus={() => setLastActiveField({ blockId: block.id, fieldName: 'title' })}
                           onChange={(e) => handleUpdateBlock(block.id, { title: e.target.value })}
                           placeholder={block.type === 'activity' ? 'Hoạt động 1: Khám phá' : 'Tình huống mở đầu'}
                           className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2 text-xs sm:text-sm text-white font-bold placeholder-slate-500 focus:ring-1 focus:ring-amber-500 outline-none"
                         />
+                        {renderMathPreview(block.title, 'Xem trước tiêu đề:')}
                       </div>
 
                       <div>
                         <label className="text-xs font-bold text-slate-300 block mb-1">
-                          Bối cảnh thực tế / Nhiệm vụ:
+                          Bối cảnh thực tế / Nhiệm vụ (Hỗ trợ $...$):
                         </label>
                         <textarea
                           value={block.description || block.context || ''}
+                          onFocus={() => setLastActiveField({ blockId: block.id, fieldName: 'description' })}
                           onChange={(e) =>
                             handleUpdateBlock(block.id, {
                               description: e.target.value,
@@ -1332,32 +1807,37 @@ export const SlideEditorPane: React.FC<SlideEditorPaneProps> = ({
                           rows={2}
                           className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-xs sm:text-sm text-white placeholder-slate-500 focus:ring-1 focus:ring-amber-500 outline-none leading-relaxed"
                         />
+                        {renderMathPreview(block.description || block.context, 'Xem trước bối cảnh:')}
                       </div>
 
                       <div>
                         <label className="text-xs font-bold text-blue-300 block mb-1">
-                          Câu hỏi thảo luận / Đặt vấn đề:
+                          Câu hỏi thảo luận / Đặt vấn đề (Hỗ trợ $...$):
                         </label>
                         <input
                           type="text"
                           value={block.question || ''}
+                          onFocus={() => setLastActiveField({ blockId: block.id, fieldName: 'question' })}
                           onChange={(e) => handleUpdateBlock(block.id, { question: e.target.value })}
                           placeholder="Dự đoán quy luật hoặc trả lời câu hỏi đặt ra?"
                           className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2 text-xs sm:text-sm text-blue-200 placeholder-slate-500 focus:ring-1 focus:ring-amber-500 outline-none"
                         />
+                        {renderMathPreview(block.question, 'Xem trước câu hỏi:')}
                       </div>
 
                       <div>
                         <label className="text-xs font-bold text-emerald-300 block mb-1">
-                          Kết luận rút ra:
+                          Kết luận rút ra (Hỗ trợ $...$):
                         </label>
                         <input
                           type="text"
                           value={block.conclusion || ''}
+                          onFocus={() => setLastActiveField({ blockId: block.id, fieldName: 'conclusion' })}
                           onChange={(e) => handleUpdateBlock(block.id, { conclusion: e.target.value })}
                           placeholder="Khái quát hóa kết luận thành kiến thức..."
                           className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2 text-xs sm:text-sm text-emerald-200 placeholder-slate-500 focus:ring-1 focus:ring-amber-500 outline-none"
                         />
+                        {renderMathPreview(block.conclusion, 'Xem trước kết luận:')}
                       </div>
                     </div>
                   )}
@@ -1370,7 +1850,7 @@ export const SlideEditorPane: React.FC<SlideEditorPaneProps> = ({
                       <div className="flex items-center justify-between">
                         <label className="text-xs font-bold text-emerald-300 flex items-center gap-1.5">
                           <Target className="w-3.5 h-3.5" />
-                          <span>Danh sách các mục tiêu cần đạt:</span>
+                          <span>Danh sách các mục tiêu cần đạt (Hỗ trợ công thức $...$):</span>
                         </label>
                         <button
                           onClick={() => {
@@ -1387,27 +1867,30 @@ export const SlideEditorPane: React.FC<SlideEditorPaneProps> = ({
                       </div>
 
                       {(block.items || []).map((it, itIdx) => (
-                        <div key={itIdx} className="flex items-center gap-2">
-                          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                          <input
-                            type="text"
-                            value={it}
-                            onChange={(e) => {
-                              const newItems = [...(block.items || [])];
-                              newItems[itIdx] = e.target.value;
-                              handleUpdateBlock(block.id, { items: newItems });
-                            }}
-                            className="flex-1 bg-slate-900 border border-slate-700 rounded-xl p-2 text-xs sm:text-sm text-white placeholder-slate-500 focus:ring-1 focus:ring-emerald-500 outline-none"
-                          />
-                          <button
-                            onClick={() => {
-                              const newItems = (block.items || []).filter((_, idx) => idx !== itIdx);
-                              handleUpdateBlock(block.id, { items: newItems });
-                            }}
-                            className="p-2 rounded-lg bg-slate-900 hover:bg-rose-600 text-slate-400 hover:text-white text-xs transition-colors shrink-0"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                        <div key={itIdx} className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                            <input
+                              type="text"
+                              value={it}
+                              onChange={(e) => {
+                                const newItems = [...(block.items || [])];
+                                newItems[itIdx] = e.target.value;
+                                handleUpdateBlock(block.id, { items: newItems });
+                              }}
+                              className="flex-1 bg-slate-900 border border-slate-700 rounded-xl p-2 text-xs sm:text-sm text-white placeholder-slate-500 focus:ring-1 focus:ring-emerald-500 outline-none"
+                            />
+                            <button
+                              onClick={() => {
+                                const newItems = (block.items || []).filter((_, idx) => idx !== itIdx);
+                                handleUpdateBlock(block.id, { items: newItems });
+                              }}
+                              className="p-2 rounded-lg bg-slate-900 hover:bg-rose-600 text-slate-400 hover:text-white text-xs transition-colors shrink-0"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                          {renderMathPreview(it, `Xem trước Mục tiêu ${itIdx + 1}:`)}
                         </div>
                       ))}
                     </div>

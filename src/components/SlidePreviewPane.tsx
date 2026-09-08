@@ -39,12 +39,15 @@ import {
   Move,
   FileText,
   Image as ImageIcon,
-  Film
+  Film,
+  Pin,
+  PinOff
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Slide, SlideImage, SlideStyleConfig, SlideContentBlock } from '../types';
 import { BLOCK_TYPES_META, getSlideBlocks } from '../utils/slideBlocks';
 import { MathView } from './MathView';
+import { MediaBlockRenderer } from './MediaBlockRenderer';
 import { SlideTransitionToolbar } from './SlideTransitionToolbar';
 import {
   getSlideVariants,
@@ -97,6 +100,28 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
   // TV 55-inch Presentation Mode font scale multiplier: 100, 125, 150 (Default TV), 175, 200
   const [tvScale, setTvScale] = useState<number>(125);
   const [isTvHighContrast, setIsTvHighContrast] = useState(true);
+
+  // TV Screen Presentation Mode:
+  // 'full': Tràn 100% diện tích màn hình thiết bị chiếu (tivi, máy chiếu) - không viền, không lề đen
+  // '16-9': Khung tỷ lệ 16:9 chuẩn TV
+  const [tvDisplayFit, setTvDisplayFit] = useState<'full' | '16-9'>('full');
+
+  // Fullscreen Auto-Hiding Controls Visibility
+  const [isControlsVisible, setIsControlsVisible] = useState<boolean>(true);
+  const [isControlsPinned, setIsControlsPinned] = useState<boolean>(false);
+  const hideControlsTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const resetControlsHideTimer = () => {
+    setIsControlsVisible(true);
+    if (hideControlsTimerRef.current) {
+      clearTimeout(hideControlsTimerRef.current);
+    }
+    if (!isControlsPinned) {
+      hideControlsTimerRef.current = setTimeout(() => {
+        setIsControlsVisible(false);
+      }, 3000);
+    }
+  };
 
   // Step-by-step reveals for Examples: key = `${blockId}` -> currentStep
   const [revealedExampleSteps, setRevealedExampleSteps] = useState<{ [key: string]: number }>({});
@@ -273,7 +298,7 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
     if (!document.fullscreenElement) {
       containerRef.current.requestFullscreen().catch(() => {});
       setIsFullscreen(true);
-      if (tvScale < 125) setTvScale(150);
+      resetControlsHideTimer();
     } else {
       document.exitFullscreen().catch(() => {});
       setIsFullscreen(false);
@@ -284,11 +309,24 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
     const handleFullscreenChange = () => {
       const inFull = !!document.fullscreenElement;
       setIsFullscreen(inFull);
-      if (inFull && tvScale < 125) setTvScale(150);
+      if (inFull) {
+        resetControlsHideTimer();
+      }
     };
     document.addEventListener('fullscreenchange', handleFullscreenChange);
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
-  }, [tvScale]);
+  }, [isControlsPinned]);
+
+  useEffect(() => {
+    if (isFullscreen) {
+      resetControlsHideTimer();
+    } else {
+      setIsControlsVisible(true);
+      if (hideControlsTimerRef.current) {
+        clearTimeout(hideControlsTimerRef.current);
+      }
+    }
+  }, [isFullscreen, isControlsPinned]);
 
   // Keyboard navigation & shortcuts during presentation
   useEffect(() => {
@@ -304,6 +342,10 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
 
       if (e.key === 'f' || e.key === 'F') {
         toggleFullscreen();
+      } else if (e.key === 'm' || e.key === 'M') {
+        setTvDisplayFit((prev) => (prev === 'full' ? '16-9' : 'full'));
+      } else if (e.key === 't' || e.key === 'T') {
+        setIsControlsVisible((prev) => !prev);
       } else if (e.key === 'l' || e.key === 'L') {
         setIsLaserMode((prev) => !prev);
         setIsDrawingMode(false);
@@ -329,7 +371,7 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isFullscreen, slideIndex, totalSlides, zoomedImage, isClickToRevealMode, blocks.length, revealedBlockCount, isDrawingMode]);
+  }, [isFullscreen, slideIndex, totalSlides, zoomedImage, isClickToRevealMode, blocks.length, revealedBlockCount, isDrawingMode, isControlsPinned]);
 
   // Canvas resize logic
   useEffect(() => {
@@ -437,156 +479,371 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
   return (
     <div
       ref={containerRef}
-      className={`relative flex flex-col h-full bg-slate-950 text-slate-100 overflow-hidden select-none ${
-        isFullscreen ? 'fixed inset-0 z-50 p-4 sm:p-6' : ''
+      onMouseMove={() => {
+        if (isFullscreen) resetControlsHideTimer();
+      }}
+      onTouchStart={() => {
+        if (isFullscreen) resetControlsHideTimer();
+      }}
+      className={`relative flex flex-col bg-slate-950 text-slate-100 select-none ${
+        isFullscreen
+          ? 'fixed inset-0 z-50 w-screen h-screen overflow-hidden p-0 m-0 bg-black'
+          : 'h-full overflow-hidden'
       }`}
     >
-      {/* 1. TOP TOOLBAR: TV 55-INCH SCALING, DRAWING, FULLSCREEN */}
-      <div className="bg-slate-900/90 border-b border-slate-800 px-4 py-2.5 flex items-center justify-between gap-2 flex-wrap shrink-0 backdrop-blur-md z-30 shadow-md">
-        {/* Left: TV 55-Inch Ready Tag & Scaling */}
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-indigo-950/80 border border-indigo-500/40 text-indigo-300 text-xs font-black shadow-inner">
-            <Tv className="w-3.5 h-3.5 text-indigo-400" />
-            <span className="hidden sm:inline">Chuẩn TV 55"</span>
-            <span className="text-white font-mono">{tvScale}%</span>
-          </div>
+      {/* 1. TOP TOOLBAR: NORMAL WORKSPACE BAR OR FULLSCREEN PRESENTATION FLOATING HUD */}
+      {!isFullscreen ? (
+        <div className="bg-slate-900/95 border-b border-slate-800 px-3 py-2 flex items-center justify-between gap-2.5 flex-nowrap overflow-x-auto no-scrollbar shrink-0 backdrop-blur-md z-30 shadow-md whitespace-nowrap">
+          {/* Group 1 (Left): TV Scale & Zoom Controls */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-indigo-950/80 border border-indigo-500/40 text-indigo-300 text-xs font-bold shadow-inner shrink-0">
+              <Tv className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+              <span>Chuẩn TV</span>
+              <span className="text-white font-mono">{tvScale}%</span>
+            </div>
 
-          <div className="flex items-center bg-slate-950 rounded-xl p-0.5 border border-slate-800">
-            <button
-              onClick={() => setTvScale((prev) => Math.max(100, prev - 25))}
-              title="Giảm cỡ chữ & hiển thị (-)"
-              className="p-1.5 rounded-lg text-slate-400 hover:text-white transition-colors"
-            >
-              <ZoomOut className="w-3.5 h-3.5" />
-            </button>
-            <button
-              onClick={() => setTvScale(125)}
-              title="Đặt lại mức chuẩn 125%"
-              className="px-2 py-1 text-[11px] font-bold text-slate-300 hover:text-white"
-            >
-              125%
-            </button>
-            <button
-              onClick={() => setTvScale((prev) => Math.min(200, prev + 25))}
-              title="Tăng cỡ chữ & hiển thị (+)"
-              className="p-1.5 rounded-lg text-slate-400 hover:text-white transition-colors"
-            >
-              <ZoomIn className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </div>
-
-        {/* Center: Slide Indicator & PowerPoint Transition Button */}
-        <div className="flex items-center gap-2">
-          <div className="text-xs font-black text-slate-300 flex items-center gap-1.5 bg-slate-950/80 px-3 py-1.5 rounded-xl border border-slate-800">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span>
-              Slide {slideIndex + 1} / {totalSlides}
-            </span>
-          </div>
-
-          {/* POWERPOINT TRANSITION BUTTON */}
-          <button
-            onClick={() => setShowTransitionsPanel(!showTransitionsPanel)}
-            title="Tùy chỉnh hiệu ứng chuyển slide PowerPoint & hoạt họa các khối"
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm ${
-              showTransitionsPanel
-                ? 'bg-gradient-to-r from-indigo-600 to-pink-600 text-white shadow-lg shadow-indigo-600/30 ring-2 ring-indigo-400'
-                : 'bg-slate-800 text-indigo-300 hover:bg-slate-700 hover:text-white border border-indigo-500/30'
-            }`}
-          >
-            <Film className="w-3.5 h-3.5 text-pink-400" />
-            <span className="hidden sm:inline">Hiệu Ứng PowerPoint</span>
-            <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-slate-950/70 text-indigo-200 border border-indigo-500/30">
-              {activePreset?.icon} {activePreset?.shortLabel || 'Trượt'}
-            </span>
-          </button>
-
-          {/* CLICK TO REVEAL MODE TOGGLE */}
-          <button
-            onClick={() => setIsClickToRevealMode((prev) => !prev)}
-            title="Bật/Tắt chế độ chạy hiệu ứng từng khối theo click chuột / phím Enter / phím mũi tên"
-            className={`px-2.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm ${
-              isClickToRevealMode
-                ? 'bg-pink-950/80 border border-pink-500/60 text-pink-300 ring-1 ring-pink-500/40 shadow-pink-950/50'
-                : 'bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-700'
-            }`}
-          >
-            <Sparkles className="w-3.5 h-3.5 text-pink-400" />
-            <span className="hidden lg:inline">Chiếu Từng Khối:</span>
-            <span>{isClickToRevealMode ? 'BẬT' : 'TẮT'}</span>
-          </button>
-        </div>
-
-        {/* Right: Interactive Presenter Tools */}
-        <div className="flex items-center gap-1.5 flex-wrap">
-          {/* Laser Pointer */}
-          <button
-            onClick={() => {
-              setIsLaserMode(!isLaserMode);
-              if (!isLaserMode) setIsDrawingMode(false);
-            }}
-            title="Đèn Laser chỉ điểm (Phím L)"
-            className={`p-2 rounded-xl text-xs font-semibold flex items-center gap-1 transition-all ${
-              isLaserMode
-                ? 'bg-rose-600 text-white shadow-lg shadow-rose-600/40 ring-2 ring-rose-400'
-                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-            }`}
-          >
-            <Radio className="w-3.5 h-3.5 text-rose-400" />
-            <span className="hidden md:inline">Laser</span>
-          </button>
-
-          {/* Pen Tool */}
-          <button
-            onClick={() => {
-              setIsDrawingMode(!isDrawingMode);
-              if (!isDrawingMode) setIsLaserMode(false);
-            }}
-            title="Bút vẽ & Chú thích trực tiếp (Phím P)"
-            className={`p-2 rounded-xl text-xs font-semibold flex items-center gap-1 transition-all ${
-              isDrawingMode
-                ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/40 ring-2 ring-emerald-400'
-                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-            }`}
-          >
-            <PenTool className="w-3.5 h-3.5 text-emerald-400" />
-            <span className="hidden md:inline">Bút Vẽ</span>
-          </button>
-
-          {isDrawingMode && (
-            <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
-              {['#ef4444', '#22c55e', '#3b82f6', '#eab308', '#ffffff'].map((color) => (
-                <button
-                  key={color}
-                  onClick={() => setActivePenColor(color)}
-                  className={`w-3.5 h-3.5 rounded-full border border-white/40 ${
-                    activePenColor === color ? 'ring-2 ring-white scale-110' : ''
-                  }`}
-                  style={{ backgroundColor: color }}
-                />
-              ))}
+            <div className="flex items-center bg-slate-950 rounded-xl p-0.5 border border-slate-800 shrink-0">
               <button
-                onClick={clearCanvas}
-                title="Xóa toàn bộ nét vẽ"
-                className="p-1 text-slate-400 hover:text-white"
+                onClick={() => setTvScale((prev) => Math.max(100, prev - 25))}
+                title="Giảm cỡ chữ & hiển thị (-)"
+                className="p-1 rounded-lg text-slate-400 hover:text-white transition-colors"
               >
-                <Eraser className="w-3.5 h-3.5" />
+                <ZoomOut className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => setTvScale(125)}
+                title="Đặt lại mức chuẩn 125%"
+                className="px-1.5 py-0.5 text-[11px] font-bold text-slate-300 hover:text-white"
+              >
+                125%
+              </button>
+              <button
+                onClick={() => setTvScale((prev) => Math.min(200, prev + 25))}
+                title="Tăng cỡ chữ & hiển thị (+)"
+                className="p-1 rounded-lg text-slate-400 hover:text-white transition-colors"
+              >
+                <ZoomIn className="w-3.5 h-3.5" />
               </button>
             </div>
-          )}
+          </div>
 
-          {/* Fullscreen Button */}
-          <button
-            onClick={toggleFullscreen}
-            title={isFullscreen ? 'Thu nhỏ (Esc)' : 'Trình chiếu toàn màn hình (Phím F)'}
-            className="p-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white shadow-md transition-all flex items-center gap-1 text-xs font-bold"
-          >
-            {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
-            <span className="hidden sm:inline">{isFullscreen ? 'Thu nhỏ' : 'Toàn Màn Hình'}</span>
-          </button>
+          {/* Group 2 (Center): Slide Indicator, PowerPoint Transition Button & Click-to-Reveal */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            <div className="text-xs font-black text-slate-300 flex items-center gap-1.5 bg-slate-950/80 px-2.5 py-1.5 rounded-xl border border-slate-800 shrink-0">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+              <span>
+                Slide {slideIndex + 1} / {totalSlides}
+              </span>
+            </div>
+
+            {/* POWERPOINT TRANSITION BUTTON */}
+            <button
+              onClick={() => setShowTransitionsPanel(!showTransitionsPanel)}
+              title="Tùy chỉnh hiệu ứng chuyển slide PowerPoint & hoạt họa các khối"
+              className={`px-2.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm shrink-0 ${
+                showTransitionsPanel
+                  ? 'bg-gradient-to-r from-indigo-600 to-pink-600 text-white shadow-lg shadow-indigo-600/30 ring-2 ring-indigo-400'
+                  : 'bg-slate-800 text-indigo-300 hover:bg-slate-700 hover:text-white border border-indigo-500/30'
+              }`}
+            >
+              <Film className="w-3.5 h-3.5 text-pink-400 shrink-0" />
+              <span>Hiệu Ứng PowerPoint</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-slate-950/70 text-indigo-200 border border-indigo-500/30">
+                {activePreset?.icon} {activePreset?.shortLabel || 'Trượt'}
+              </span>
+            </button>
+
+            {/* CLICK TO REVEAL MODE TOGGLE */}
+            <button
+              onClick={() => setIsClickToRevealMode((prev) => !prev)}
+              title="Bật/Tắt chế độ chạy hiệu ứng từng khối theo click chuột / phím Enter / phím mũi tên"
+              className={`px-2.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm shrink-0 ${
+                isClickToRevealMode
+                  ? 'bg-pink-950/80 border border-pink-500/60 text-pink-300 ring-1 ring-pink-500/40 shadow-pink-950/50'
+                  : 'bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-700'
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5 text-pink-400 shrink-0" />
+              <span>Chiếu Từng Khối: {isClickToRevealMode ? 'BẬT' : 'TẮT'}</span>
+            </button>
+          </div>
+
+          {/* Group 3 (Right): Interactive Presenter Tools & Fullscreen Presentation */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            {/* Laser Pointer */}
+            <button
+              onClick={() => {
+                setIsLaserMode(!isLaserMode);
+                if (!isLaserMode) setIsDrawingMode(false);
+              }}
+              title="Đèn Laser chỉ điểm (Phím L)"
+              className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all shrink-0 ${
+                isLaserMode
+                  ? 'bg-rose-600 text-white shadow-lg shadow-rose-600/40 ring-2 ring-rose-400'
+                  : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+              }`}
+            >
+              <Radio className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+              <span>Laser</span>
+            </button>
+
+            {/* Pen Tool */}
+            <button
+              onClick={() => {
+                setIsDrawingMode(!isDrawingMode);
+                if (!isDrawingMode) setIsLaserMode(false);
+              }}
+              title="Bút vẽ & Chú thích trực tiếp (Phím P)"
+              className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all shrink-0 ${
+                isDrawingMode
+                  ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/40 ring-2 ring-emerald-400'
+                  : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+              }`}
+            >
+              <PenTool className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              <span>Bút Vẽ</span>
+            </button>
+
+            {isDrawingMode && (
+              <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 shrink-0">
+                {['#ef4444', '#22c55e', '#3b82f6', '#eab308', '#ffffff'].map((color) => (
+                  <button
+                    key={color}
+                    onClick={() => setActivePenColor(color)}
+                    className={`w-3.5 h-3.5 rounded-full border border-white/40 ${
+                      activePenColor === color ? 'ring-2 ring-white scale-110' : ''
+                    }`}
+                    style={{ backgroundColor: color }}
+                  />
+                ))}
+                <button
+                  onClick={clearCanvas}
+                  title="Xóa toàn bộ nét vẽ"
+                  className="p-1 text-slate-400 hover:text-white"
+                >
+                  <Eraser className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+
+            {/* Fullscreen Button */}
+            <button
+              onClick={toggleFullscreen}
+              title="Trình chiếu tối đa diện tích màn hình TV / Máy Chiếu (Phím F)"
+              className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:brightness-110 text-white shadow-lg shadow-indigo-600/30 transition-all flex items-center gap-1.5 text-xs font-black shrink-0 whitespace-nowrap"
+            >
+              <Maximize2 className="w-3.5 h-3.5 shrink-0" />
+              <span>Toàn Màn Hình TV (F)</span>
+            </button>
+          </div>
         </div>
-      </div>
+      ) : (
+        /* FLOATING AUTO-HIDING PRESENTER HUD IN FULLSCREEN PRESENTATION MODE */
+        <div
+          className={`fixed top-3 left-1/2 -translate-x-1/2 z-50 transition-all duration-300 max-w-[96vw] ${
+            isControlsVisible || isControlsPinned
+              ? 'opacity-100 translate-y-0 pointer-events-auto'
+              : 'opacity-0 -translate-y-6 pointer-events-none'
+          }`}
+          onMouseEnter={() => {
+            if (hideControlsTimerRef.current) clearTimeout(hideControlsTimerRef.current);
+            setIsControlsVisible(true);
+          }}
+          onMouseLeave={() => {
+            if (!isControlsPinned) resetControlsHideTimer();
+          }}
+        >
+          <div className="bg-slate-950/95 backdrop-blur-2xl border border-slate-700/80 rounded-2xl px-3 py-2 shadow-2xl flex items-center gap-2 text-xs flex-wrap">
+            {/* Slide Navigation */}
+            <div className="flex items-center gap-1 bg-slate-900 px-2 py-1 rounded-xl border border-slate-800">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handlePreviousStep();
+                }}
+                disabled={slideIndex === 0 && revealedBlockCount <= 1}
+                className="p-1 text-slate-400 hover:text-white disabled:opacity-30"
+                title="Lùi 1 khối / slide (Phím ⬅️)"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <span className="text-xs font-black text-slate-200 px-1 font-mono">
+                {slideIndex + 1} / {totalSlides}
+              </span>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleAdvanceStep();
+                }}
+                className="p-1 text-slate-400 hover:text-white"
+                title="Hiện tiếp / Sang slide (Phím ➡️ hoặc Enter)"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Display Fit Toggle: Tràn 100% diện tích TV vs 16:9 Chuẩn */}
+            <button
+              onClick={() => setTvDisplayFit(tvDisplayFit === 'full' ? '16-9' : 'full')}
+              title="Chuyển đổi diện tích chiếu: Tràn 100% diện tích TV (Phím M)"
+              className="px-2.5 py-1.5 rounded-xl bg-emerald-950/90 border border-emerald-500/60 text-emerald-300 hover:text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-inner"
+            >
+              <Tv className="w-3.5 h-3.5 text-emerald-400" />
+              <span>{tvDisplayFit === 'full' ? '📺 Tràn 100% TV' : '📺 16:9 Chuẩn TV'}</span>
+            </button>
+
+            {/* TV Scale selector */}
+            <div className="hidden sm:flex items-center gap-1 bg-slate-900 px-2 py-1 rounded-xl border border-slate-800">
+              <span className="text-[10px] text-slate-400 font-bold">Chữ TV:</span>
+              {[100, 125, 150].map((scale) => (
+                <button
+                  key={scale}
+                  onClick={() => setTvScale(scale)}
+                  className={`px-1.5 py-0.5 rounded text-[11px] font-bold ${
+                    tvScale === scale
+                      ? 'bg-indigo-600 text-white shadow'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  {scale}%
+                </button>
+              ))}
+            </div>
+
+            {/* Laser Pointer */}
+            <button
+              onClick={() => {
+                setIsLaserMode(!isLaserMode);
+                if (!isLaserMode) setIsDrawingMode(false);
+              }}
+              title="Đèn Laser chỉ điểm (Phím L)"
+              className={`px-2 py-1 rounded-xl text-xs font-semibold flex items-center gap-1 transition-all ${
+                isLaserMode
+                  ? 'bg-rose-600 text-white ring-2 ring-rose-400'
+                  : 'bg-slate-900 text-slate-300 hover:bg-slate-800'
+              }`}
+            >
+              <Radio className="w-3.5 h-3.5 text-rose-400" />
+              <span className="hidden md:inline">Laser</span>
+            </button>
+
+            {/* Pen Tool */}
+            <button
+              onClick={() => {
+                setIsDrawingMode(!isDrawingMode);
+                if (!isDrawingMode) setIsLaserMode(false);
+              }}
+              title="Bút vẽ & Chú thích trực tiếp (Phím P)"
+              className={`px-2 py-1 rounded-xl text-xs font-semibold flex items-center gap-1 transition-all ${
+                isDrawingMode
+                  ? 'bg-emerald-600 text-white ring-2 ring-emerald-400'
+                  : 'bg-slate-900 text-slate-300 hover:bg-slate-800'
+              }`}
+            >
+              <PenTool className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="hidden md:inline">Bút</span>
+            </button>
+
+            {isDrawingMode && (
+              <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
+                {['#ef4444', '#22c55e', '#3b82f6', '#eab308', '#ffffff'].map((color) => (
+                  <button
+                    key={color}
+                    onClick={() => setActivePenColor(color)}
+                    className={`w-3.5 h-3.5 rounded-full border border-white/40 ${
+                      activePenColor === color ? 'ring-2 ring-white scale-110' : ''
+                    }`}
+                    style={{ backgroundColor: color }}
+                  />
+                ))}
+                <button
+                  onClick={clearCanvas}
+                  title="Xóa toàn bộ nét vẽ"
+                  className="p-1 text-slate-400 hover:text-white"
+                >
+                  <Eraser className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+
+            {/* Click to Reveal Mode toggle */}
+            <button
+              onClick={() => setIsClickToRevealMode((prev) => !prev)}
+              title="Bật/Tắt chế độ hiện từng khối"
+              className={`px-2 py-1 rounded-xl text-xs font-semibold transition-all ${
+                isClickToRevealMode ? 'bg-indigo-950 text-indigo-300 border border-indigo-500/40' : 'bg-slate-900 text-slate-400'
+              }`}
+            >
+              {isClickToRevealMode ? 'Từng Khối' : 'Hiện Hết'}
+            </button>
+
+            {/* PowerPoint Transitions */}
+            <button
+              onClick={() => setShowTransitionsPanel(!showTransitionsPanel)}
+              title="Hiệu ứng PowerPoint"
+              className="p-1.5 rounded-xl bg-slate-900 text-slate-300 hover:text-white"
+            >
+              <Film className="w-3.5 h-3.5 text-pink-400" />
+            </button>
+
+            {/* Pin Toolbar */}
+            <button
+              onClick={() => {
+                setIsControlsPinned(!isControlsPinned);
+                if (!isControlsPinned) setIsControlsVisible(true);
+              }}
+              title={isControlsPinned ? 'Bỏ ghim (thanh sẽ tự ẩn khi giảng bài)' : 'Ghim thanh điều khiển luôn hiện'}
+              className={`p-1.5 rounded-xl transition-all ${
+                isControlsPinned ? 'bg-amber-500/30 text-amber-300 border border-amber-500/50' : 'bg-slate-900 text-slate-400 hover:text-white'
+              }`}
+            >
+              {isControlsPinned ? <PinOff className="w-3.5 h-3.5" /> : <Pin className="w-3.5 h-3.5" />}
+            </button>
+
+            {/* Exit Fullscreen */}
+            <button
+              onClick={toggleFullscreen}
+              title="Thoát toàn màn hình (Phím Esc hoặc F)"
+              className="px-2.5 py-1.5 rounded-xl bg-rose-950/80 hover:bg-rose-600 border border-rose-500/40 text-rose-200 hover:text-white text-xs font-bold flex items-center gap-1 transition-all"
+            >
+              <Minimize2 className="w-3.5 h-3.5" />
+              <span>Thoát (Esc)</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Touch Screen / Presenter Chevrons on Left & Right Screen Edges */}
+      {isFullscreen && (
+        <>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              handlePreviousStep();
+            }}
+            disabled={slideIndex === 0 && revealedBlockCount <= 1}
+            title="Về slide trước (Phím ⬅️)"
+            className={`fixed left-3 top-1/2 -translate-y-1/2 z-40 w-12 h-24 rounded-2xl bg-slate-900/60 hover:bg-slate-900/95 border border-white/10 text-white flex items-center justify-center backdrop-blur-md transition-all shadow-2xl disabled:opacity-0 ${
+              isControlsVisible || isControlsPinned ? 'opacity-80' : 'opacity-0 hover:opacity-80'
+            }`}
+          >
+            <ChevronLeft className="w-7 h-7 text-white/90 drop-shadow" />
+          </button>
+
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              handleAdvanceStep();
+            }}
+            title="Khối tiếp theo / Slide tiếp theo (Click hoặc Phím ➡️)"
+            className={`fixed right-3 top-1/2 -translate-y-1/2 z-40 w-12 h-24 rounded-2xl bg-slate-900/60 hover:bg-slate-900/95 border border-white/10 text-white flex items-center justify-center backdrop-blur-md transition-all shadow-2xl ${
+              isControlsVisible || isControlsPinned ? 'opacity-80' : 'opacity-0 hover:opacity-80'
+            }`}
+          >
+            <ChevronRight className="w-7 h-7 text-white/90 drop-shadow" />
+          </button>
+        </>
+      )}
 
       {/* Auto-Play Progress Countdown Indicator */}
       {isAutoPlaying && (
@@ -600,9 +857,11 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
 
       {/* 2. SLIDE DISPLAY CANVAS (SCROLLABLE & ZOOMABLE) */}
       <div
-        className={`relative flex-1 overflow-y-auto ${
-          isFullscreen ? 'p-2 sm:p-4 lg:p-6' : 'p-3 sm:p-5 lg:p-6'
-        } custom-scrollbar overflow-x-hidden flex flex-col justify-between items-center ${
+        className={`relative flex-1 ${
+          isFullscreen
+            ? 'overflow-hidden h-full max-h-screen p-0 m-0 no-scrollbar select-none'
+            : 'overflow-y-auto p-3 sm:p-5 lg:p-6 custom-scrollbar'
+        } overflow-x-hidden flex flex-col justify-start items-center ${
           !isDrawingMode && !isLaserMode ? 'cursor-pointer' : ''
         }`}
         onClick={(e) => {
@@ -665,7 +924,7 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
           />
         )}
 
-        {/* POWERPOINT ANIMATED SLIDE CONTAINER (OCCUPIES ~90% OF SCREEN) */}
+        {/* POWERPOINT ANIMATED SLIDE CONTAINER (OCCUPIES 100% OF TV SCREEN IN FULLSCREEN PRESENTATION) */}
         <AnimatePresence mode="wait" custom={slideDirection}>
           <motion.div
             key={`${slide.id || slideIndex}_${previewKey}`}
@@ -674,10 +933,16 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
             initial="initial"
             animate="animate"
             exit="exit"
-            className={`relative z-10 w-[94%] sm:w-[92%] lg:w-[90%] xl:w-[90%] max-w-[94vw] mx-auto min-h-[82vh] sm:min-h-[86vh] rounded-3xl p-6 sm:p-10 lg:p-12 space-y-8 bg-slate-900/60 border border-slate-800/80 shadow-2xl backdrop-blur-xl transition-all ${fontClass}`}
+            className={`relative z-10 transition-all ${fontClass} ${
+              isFullscreen
+                ? tvDisplayFit === 'full'
+                  ? 'w-full h-full max-h-screen overflow-hidden rounded-none border-0 shadow-none m-0 p-6 sm:p-8 lg:p-10 space-y-6 flex flex-col justify-between box-border select-none'
+                  : 'w-full max-w-[calc(100vh*16/9)] h-full max-h-screen aspect-[16/9] overflow-hidden rounded-none border-0 shadow-none my-auto p-6 sm:p-8 lg:p-10 space-y-6 flex flex-col justify-between box-border select-none'
+                : 'w-[94%] sm:w-[92%] lg:w-[90%] xl:w-[90%] max-w-[94vw] mx-auto min-h-[82vh] sm:min-h-[86vh] rounded-3xl p-6 sm:p-10 lg:p-12 space-y-8 bg-slate-900/60 border border-slate-800/80 shadow-2xl backdrop-blur-xl'
+            }`}
             style={{
-              backgroundColor: styleConfig.backgroundColor || undefined,
-              transform: `scale(${tvScale / 100})`,
+              backgroundColor: styleConfig.backgroundColor || '#020617',
+              transform: !isFullscreen && tvScale !== 100 ? `scale(${tvScale / 100})` : undefined,
               transformOrigin: 'top center',
               transition: 'transform 0.15s ease-out',
             }}
@@ -709,7 +974,14 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
           {/* RENDER MODULAR BLOCKS IN EXACT ORDER                          */}
           {/* ============================================================= */}
           {blocks.length > 0 && (
-            <div className="space-y-6" style={{ color: textColor }}>
+            <div
+              className={`space-y-6 ${
+                isFullscreen
+                  ? 'flex-1 min-h-0 overflow-y-auto no-scrollbar flex flex-col justify-center'
+                  : ''
+              }`}
+              style={{ color: textColor }}
+            >
               {blocks.map((block, bIdx) => {
                 // If in click-to-reveal mode, only show blocks up to revealed count
                 const isVisible = !isClickToRevealMode || bIdx < revealedBlockCount;
@@ -791,6 +1063,18 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
                         )}
                       </div>
                     </div>
+                  );
+                }
+
+                // -------------------------------------------------------------
+                // 1b. KHỐI VIDEO / AUDIO (MEDIA BLOCK)
+                // -------------------------------------------------------------
+                if (block.type === 'media') {
+                  return (
+                    <MediaBlockRenderer
+                      key={block.id || bIdx}
+                      block={block}
+                    />
                   );
                 }
 
@@ -1255,7 +1539,14 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
 
         {/* POWERPOINT STEP-BY-STEP BLOCK NAVIGATION FLOATING BAR */}
         {blocks.length > 0 && isClickToRevealMode && (
-          <div className="no-slide-advance sticky bottom-2 left-0 right-0 mt-8 max-w-xl mx-auto w-full z-30 px-3">
+          <div
+            className={`no-slide-advance z-30 px-3 transition-opacity duration-300 ${
+              isFullscreen
+                ? 'fixed bottom-4 left-1/2 -translate-x-1/2 max-w-lg w-full ' +
+                  (isControlsVisible || isControlsPinned ? 'opacity-100 pointer-events-auto' : 'opacity-25 hover:opacity-100 pointer-events-auto')
+                : 'sticky bottom-2 left-0 right-0 mt-8 max-w-xl mx-auto w-full opacity-100'
+            }`}
+          >
             <div className="flex items-center justify-between gap-2.5 bg-slate-900/95 border border-pink-500/40 backdrop-blur-md rounded-2xl px-4 py-2.5 shadow-2xl text-xs">
               <div className="flex items-center gap-2">
                 <span className="font-black text-pink-300 flex items-center gap-1.5">

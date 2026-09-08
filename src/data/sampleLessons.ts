@@ -6,8 +6,8 @@ export const SAMPLE_LESSONS: MathLesson[] = [
     title: 'BÀI 1: MỆNH ĐỀ (TOÁN 10 - KẾT NỐI TRI THỨC)',
     grade: 'Toán Lớp 10 - Đại Số & Lôgic',
     chapterOrTopic: 'Chương I: Mệnh Đề và Tập Hợp',
-    createdAt: Date.now() - 3600000 * 5,
-    updatedAt: Date.now(),
+    createdAt: 1700000000000,
+    updatedAt: 1700000000000,
     sourceImageCount: 4,
     config: {
       totalQuestions: 10,
@@ -812,8 +812,8 @@ export const SAMPLE_LESSONS: MathLesson[] = [
     title: 'Định Lý Pythagore (Pytago) & Ứng Dụng Thực Tiễn',
     grade: 'Toán Lớp 8 - Hình Học',
     chapterOrTopic: 'Tam Giác Vuông & Hệ Thức Lượng',
-    createdAt: Date.now() - 86400000 * 2,
-    updatedAt: Date.now() - 86400000,
+    createdAt: 1700000000000,
+    updatedAt: 1700000000000,
     sourceImageCount: 2,
     config: {
       totalQuestions: 10,
@@ -1681,8 +1681,8 @@ export const SAMPLE_LESSONS: MathLesson[] = [
     title: 'Phương Trình Bậc Hai Một Ẩn & Hệ Thức Viète',
     grade: 'Toán Lớp 9 - Đại Số',
     chapterOrTopic: 'Phương Trình & Bất Phương Trình',
-    createdAt: Date.now() - 86400000 * 5,
-    updatedAt: Date.now() - 86400000 * 3,
+    createdAt: 1700000000000,
+    updatedAt: 1700000000000,
     sourceImageCount: 3,
     config: {
       totalQuestions: 12,

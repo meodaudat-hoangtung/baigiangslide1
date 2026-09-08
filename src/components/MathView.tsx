@@ -55,96 +55,72 @@ export const MathView: React.FC<MathViewProps> = ({
       }
     }
 
-    let text = content;
+    const blockTag = inline || Tag === 'span' ? 'span' : 'div';
+    const mathTokens: string[] = [];
 
-    // Convert markdown bold and italics
+    // Unified math regex to match delimiters without collision:
+    // 1. $$ ... $$ (display block)
+    // 2. \\[ ... \\] (display block)
+    // 3. \\begin{env} ... \\end{env} (display block)
+    // 4. \\( ... \\) (inline)
+    // 5. $ ... $ (inline)
+    const MATH_REGEX = /(\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\]|\\begin\{(?:matrix|pmatrix|bmatrix|vmatrix|Vmatrix|cases|align|aligned|array|gather|gathered|split)\}[\s\S]*?\\end\{(?:matrix|pmatrix|bmatrix|vmatrix|Vmatrix|cases|align|aligned|array|gather|gathered|split)\}|\\\([\s\S]*?\\\)|\$[^\$\n]+?\$)/g;
+
+    let text = content.replace(MATH_REGEX, (match) => {
+      let mathStr = '';
+      let isDisplay = false;
+
+      if (match.startsWith('$$') && match.endsWith('$$')) {
+        mathStr = match.slice(2, -2).trim();
+        isDisplay = true;
+      } else if (match.startsWith('\\[') && match.endsWith('\\]')) {
+        mathStr = match.slice(2, -2).trim();
+        isDisplay = true;
+      } else if (match.startsWith('\\(') && match.endsWith('\\)')) {
+        mathStr = match.slice(2, -2).trim();
+        isDisplay = false;
+      } else if (match.startsWith('$') && match.endsWith('$')) {
+        mathStr = match.slice(1, -1).trim();
+        isDisplay = false;
+      } else {
+        // Standalone \begin{...}...\end{...}
+        mathStr = match.trim();
+        isDisplay = true;
+      }
+
+      let rendered = '';
+      try {
+        rendered = katex.renderToString(mathStr, {
+          displayMode: inline ? false : isDisplay,
+          throwOnError: false,
+          trust: true,
+          strict: false,
+          macros: KATEX_MACROS,
+        });
+      } catch {
+        rendered = match;
+      }
+
+      const wrapped = isDisplay && !inline
+        ? `<${blockTag} class="katex-block block my-2.5 overflow-x-auto py-1.5 px-3 rounded-xl bg-slate-900/70 border border-slate-800/90 text-center shadow-inner text-amber-200">${rendered}</${blockTag}>`
+        : `<span class="katex-inline inline-block px-0.5 text-amber-300 font-medium">${rendered}</span>`;
+
+      const token = `__MATH_TOKEN_${mathTokens.length}__`;
+      mathTokens.push(wrapped);
+      return token;
+    });
+
+    // Convert markdown bold and italics on non-math text
     text = text.replace(/\*\*(.*?)\*\*/g, '<strong class="font-bold text-indigo-200">$1</strong>');
     text = text.replace(/\*([^\*]+)\*/g, '<em class="italic text-slate-300">$1</em>');
 
-    const blockTag = inline || Tag === 'span' ? 'span' : 'div';
-
-    // 1. First replace \begin{environment}...\end{environment} if not already enclosed in $$
-    text = text.replace(/\\begin\{(matrix|pmatrix|bmatrix|vmatrix|Vmatrix|cases|align|aligned|array|gather|gathered|split)\}([\s\S]*?)\\end\{\1\}/g, (match) => {
-      try {
-        const rendered = katex.renderToString(match.trim(), {
-          displayMode: true,
-          throwOnError: false,
-          trust: true,
-          strict: false,
-          macros: KATEX_MACROS,
-        });
-        return `<${blockTag} class="katex-block block my-2 overflow-x-auto py-1 px-3 rounded-xl bg-slate-900/60 border border-slate-800/80 text-center">${rendered}</${blockTag}>`;
-      } catch {
-        return `<span class="font-mono text-amber-300">${match}</span>`;
-      }
-    });
-
-    // 2. Replace block math $$...$$
-    text = text.replace(/\$\$([\s\S]*?)\$\$/g, (_, math) => {
-      try {
-        const rendered = katex.renderToString(math.trim(), {
-          displayMode: true,
-          throwOnError: false,
-          trust: true,
-          strict: false,
-          macros: KATEX_MACROS,
-        });
-        return `<${blockTag} class="katex-block block my-2.5 overflow-x-auto py-1.5 px-3 rounded-xl bg-slate-900/70 border border-slate-800/90 text-center shadow-inner text-amber-200">${rendered}</${blockTag}>`;
-      } catch {
-        return `<${blockTag} class="font-mono text-amber-300 text-center my-2">$$${math}$$</${blockTag}>`;
-      }
-    });
-
-    // 3. Replace block math \[...\]
-    text = text.replace(/\\\[([\s\S]*?)\\\]/g, (_, math) => {
-      try {
-        const rendered = katex.renderToString(math.trim(), {
-          displayMode: true,
-          throwOnError: false,
-          trust: true,
-          strict: false,
-          macros: KATEX_MACROS,
-        });
-        return `<${blockTag} class="katex-block block my-2.5 overflow-x-auto py-1.5 px-3 rounded-xl bg-slate-900/70 border border-slate-800/90 text-center shadow-inner text-amber-200">${rendered}</${blockTag}>`;
-      } catch {
-        return `<${blockTag} class="font-mono text-amber-300 text-center my-2">\\[${math}\\]</${blockTag}>`;
-      }
-    });
-
-    // 4. Replace inline math $...$
-    text = text.replace(/\$([^\$\n]+?)\$/g, (_, math) => {
-      try {
-        const rendered = katex.renderToString(math.trim(), {
-          displayMode: false,
-          throwOnError: false,
-          trust: true,
-          strict: false,
-          macros: KATEX_MACROS,
-        });
-        return `<span class="katex-inline inline-block px-0.5 text-amber-300 font-medium">${rendered}</span>`;
-      } catch {
-        return `<span class="font-mono text-amber-300">$${math}$</span>`;
-      }
-    });
-
-    // 5. Replace inline math \(...\)
-    text = text.replace(/\\\(([\s\S]*?)\\\)/g, (_, math) => {
-      try {
-        const rendered = katex.renderToString(math.trim(), {
-          displayMode: false,
-          throwOnError: false,
-          trust: true,
-          strict: false,
-          macros: KATEX_MACROS,
-        });
-        return `<span class="katex-inline inline-block px-0.5 text-amber-300 font-medium">${rendered}</span>`;
-      } catch {
-        return `<span class="font-mono text-amber-300">\\(${math}\\)</span>`;
-      }
-    });
-
     // Replace newlines with linebreaks
-    const formatted = text.replace(/\n/g, '<br/>');
+    let formatted = text.replace(/\n/g, '<br/>');
+
+    // Restore math tokens safely
+    mathTokens.forEach((tokenHtml, idx) => {
+      formatted = formatted.replace(`__MATH_TOKEN_${idx}__`, () => tokenHtml);
+    });
 
     return formatted;
   }, [content, block, inline, Tag]);

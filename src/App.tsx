@@ -1,21 +1,36 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { SAMPLE_LESSONS } from './data/sampleLessons';
-import { MathLesson, Slide, Question } from './types';
+import { MathLesson, Slide, Question, AppUser } from './types';
 import { Navbar } from './components/Navbar';
 import { StudioWorkspace } from './components/StudioWorkspace';
 import { QuizSection } from './components/QuizSection';
 import { LessonLibrary } from './components/LessonLibrary';
 import { UploadModal } from './components/UploadModal';
-import { StorageService, getDeletedLessonIds } from './services/storageService';
+import { CreateLessonModal } from './components/CreateLessonModal';
+import { EmptyLessonState } from './components/EmptyLessonState';
+import { AdminPanelModal } from './components/AdminPanelModal';
+import { LoginModal } from './components/LoginModal';
+import { StorageService, getDeletedLessonIds, unrecordDeletedLessonId } from './services/storageService';
+import { FirestoreService } from './services/firestoreService';
 
 export default function App() {
+  const [currentUser, setCurrentUser] = useState<AppUser | null>(() => {
+    return FirestoreService.getCurrentSession();
+  });
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(() => {
+    return !FirestoreService.getCurrentSession();
+  });
+  const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(false);
+  const [authLoading, setAuthLoading] = useState(false);
+
+
   const [lessons, setLessons] = useState<MathLesson[]>(() => {
     try {
       const deletedIds = getDeletedLessonIds();
       const local = localStorage.getItem('mathslide_lessons_v2');
       if (local) {
         const parsed = JSON.parse(local);
-        if (Array.isArray(parsed) && parsed.length > 0) {
+        if (Array.isArray(parsed)) {
           const filtered = parsed.filter((l: MathLesson) => !deletedIds.has(l.id));
           return filtered;
         }
@@ -36,20 +51,24 @@ export default function App() {
       const local = localStorage.getItem('mathslide_lessons_v2');
       if (local) {
         const parsed = JSON.parse(local);
-        if (Array.isArray(parsed) && parsed.length > 0) {
+        if (Array.isArray(parsed)) {
           const filtered = parsed.filter((l: MathLesson) => !deletedIds.has(l.id));
           if (filtered.length > 0) return filtered[0].id;
+          return '';
         }
       }
+      const isInit = localStorage.getItem('mathslide_initialized_v2');
+      if (isInit === 'true') return '';
       const valid = SAMPLE_LESSONS.filter((l) => !deletedIds.has(l.id));
       return valid[0]?.id || '';
     } catch {
-      return SAMPLE_LESSONS[0]?.id || '';
+      return '';
     }
   });
 
   const [activeTab, setActiveTab] = useState<'slides' | 'questions' | 'library'>('slides');
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isSynced, setIsSynced] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isOnline, setIsOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
@@ -82,6 +101,15 @@ export default function App() {
 
     initData();
 
+    // Listen to Firebase Auth state in real time
+    const unsubscribeAuth = FirestoreService.onUserAuthChange((user) => {
+      if (user) {
+        setCurrentUser(user);
+        setIsLoginModalOpen(false);
+      }
+    });
+
+
     // Listen to network online / offline events
     const handleOnline = async () => {
       setIsOnline(true);
@@ -112,16 +140,34 @@ export default function App() {
 
     return () => {
       isMounted = false;
+      unsubscribeAuth();
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
   }, []);
 
+  const handleLoginSuccess = (user: AppUser) => {
+    setCurrentUser(user);
+    setIsLoginModalOpen(false);
+  };
+
+  const handleLogout = async () => {
+    try {
+      await FirestoreService.logout();
+      setCurrentUser(null);
+      setIsAdminPanelOpen(false);
+      setIsLoginModalOpen(true);
+    } catch (err: any) {
+      console.error('Logout error:', err);
+    }
+  };
+
+
   const currentLesson = lessons.find((l) => l.id === currentLessonId) || lessons[0] || null;
 
   // Persist current lessons state across IndexedDB, localStorage and backend server
-  const saveLessonToAllTiers = useCallback(async (updatedLesson: MathLesson) => {
-    // 1. Update React state immediately
+  const saveLessonToAllTiers = useCallback((updatedLesson: MathLesson) => {
+    setIsSyncing(true);
     setLessons((prev) => {
       const idx = prev.findIndex((l) => l.id === updatedLesson.id);
       let next: MathLesson[];
@@ -131,21 +177,23 @@ export default function App() {
       } else {
         next = [updatedLesson, ...prev];
       }
+
+      // Persist to storage tiers with the exact fresh list
+      StorageService.saveLesson(updatedLesson, next)
+        .then(({ isSynced: synced }) => {
+          setIsSynced(synced);
+        })
+        .catch((err) => {
+          console.error('Save failed:', err);
+          setIsSynced(false);
+        })
+        .finally(() => {
+          setIsSyncing(false);
+        });
+
       return next;
     });
-
-    // 2. Persist to storage tiers
-    setIsSyncing(true);
-    try {
-      const { isSynced: synced } = await StorageService.saveLesson(updatedLesson, lessons);
-      setIsSynced(synced);
-    } catch (err) {
-      console.error('Save failed:', err);
-      setIsSynced(false);
-    } finally {
-      setIsSyncing(false);
-    }
-  }, [lessons]);
+  }, []);
 
   const handleLessonGenerated = (newLesson: MathLesson) => {
     saveLessonToAllTiers(newLesson);
@@ -286,14 +334,19 @@ export default function App() {
     setCurrentLessonId(duplicated.id);
   };
 
-  const handleDeleteLesson = async (lessonId: string) => {
-    const remaining = lessons.filter((l) => l.id !== lessonId);
-    setLessons(remaining);
-    if (currentLessonId === lessonId && remaining.length > 0) {
-      setCurrentLessonId(remaining[0].id);
-    }
-    await StorageService.deleteLesson(lessonId, remaining);
-  };
+  const handleDeleteLesson = useCallback((lessonId: string) => {
+    setLessons((prev) => {
+      const remaining = prev.filter((l) => l.id !== lessonId);
+      setCurrentLessonId((curr) => {
+        if (curr === lessonId) {
+          return remaining.length > 0 ? remaining[0].id : '';
+        }
+        return curr;
+      });
+      StorageService.deleteLesson(lessonId, remaining);
+      return remaining;
+    });
+  }, []);
 
   const handleImportLesson = (importedLesson: MathLesson) => {
     saveLessonToAllTiers(importedLesson);
@@ -317,6 +370,33 @@ export default function App() {
     }
   };
 
+  const handleCreateNewLesson = (newLesson: MathLesson) => {
+    saveLessonToAllTiers(newLesson);
+    setCurrentLessonId(newLesson.id);
+    setActiveTab('slides');
+  };
+
+  const handleRestoreSampleLessons = async () => {
+    try {
+      setIsSyncing(true);
+      // Un-record deleted IDs
+      SAMPLE_LESSONS.forEach((s) => {
+        unrecordDeletedLessonId(s.id);
+      });
+      setLessons(SAMPLE_LESSONS);
+      setCurrentLessonId(SAMPLE_LESSONS[0]?.id || '');
+      setActiveTab('slides');
+      for (const s of SAMPLE_LESSONS) {
+        await StorageService.saveLesson(s, SAMPLE_LESSONS).catch(() => {});
+      }
+      setIsSynced(true);
+    } catch (err) {
+      console.error('Error restoring sample lessons:', err);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   const handleToggleFullscreen = () => {
     if (!document.fullscreenElement) {
       document.documentElement.requestFullscreen?.().catch(() => {});
@@ -333,15 +413,43 @@ export default function App() {
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         onOpenUpload={() => setIsUploadModalOpen(true)}
+        onOpenCreateLesson={() => setIsCreateModalOpen(true)}
         onToggleFullscreen={handleToggleFullscreen}
         isSynced={isSynced}
         isOnline={isOnline}
         isSyncing={isSyncing}
+        currentUser={currentUser}
+        onLogin={() => setIsLoginModalOpen(true)}
+        onLogout={handleLogout}
+        onOpenAdminPanel={() => {
+          if (currentUser?.role === 'admin') {
+            setIsAdminPanelOpen(true);
+          }
+        }}
       />
+
 
       {/* Main View Area */}
       <main className="flex-1">
-        {currentLesson ? (
+        {activeTab === 'library' ? (
+          <LessonLibrary
+            lessons={lessons}
+            currentLessonId={currentLessonId}
+            onSelectLesson={(l) => {
+              setCurrentLessonId(l.id);
+              setActiveTab('slides');
+            }}
+            onUpdateLesson={handleUpdateLesson}
+            onDeleteLesson={handleDeleteLesson}
+            onDuplicateLesson={handleDuplicateLesson}
+            onImportLesson={handleImportLesson}
+            onOpenUploadModal={() => setIsUploadModalOpen(true)}
+            onOpenCreateModal={() => setIsCreateModalOpen(true)}
+            onRefreshCloudSync={handleRefreshCloudSync}
+            isSyncing={isSyncing}
+            isOnline={isOnline}
+          />
+        ) : currentLesson ? (
           <>
             {activeTab === 'slides' && (
               <StudioWorkspace
@@ -360,48 +468,44 @@ export default function App() {
                 onAddQuestion={handleAddQuestion}
               />
             )}
-
-            {activeTab === 'library' && (
-              <LessonLibrary
-                lessons={lessons}
-                currentLessonId={currentLessonId}
-                onSelectLesson={(l) => {
-                  setCurrentLessonId(l.id);
-                  setActiveTab('slides');
-                }}
-                onUpdateLesson={handleUpdateLesson}
-                onDeleteLesson={handleDeleteLesson}
-                onDuplicateLesson={handleDuplicateLesson}
-                onImportLesson={handleImportLesson}
-                onOpenUploadModal={() => setIsUploadModalOpen(true)}
-                onRefreshCloudSync={handleRefreshCloudSync}
-                isSyncing={isSyncing}
-                isOnline={isOnline}
-              />
-            )}
           </>
         ) : (
-          <div className="flex flex-col items-center justify-center min-h-[60vh] text-center p-6 space-y-4">
-            <h2 className="text-xl font-bold text-white">Chưa có bài giảng nào</h2>
-            <p className="text-sm text-slate-400 max-w-md">
-              Bạn có thể tạo bài giảng mới hoặc khôi phục dữ liệu từ tệp sao lưu.
-            </p>
-            <button
-              onClick={() => setActiveTab('library')}
-              className="px-6 py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm shadow-xl"
-            >
-              Vào Kho Bài Giảng
-            </button>
-          </div>
+          <EmptyLessonState
+            onOpenCreateModal={() => setIsCreateModalOpen(true)}
+            onImportLesson={handleImportLesson}
+            onRefreshCloudSync={handleRefreshCloudSync}
+            isSyncing={isSyncing}
+          />
         )}
       </main>
 
-      {/* Upload Modal */}
+      {/* Upload AI Modal */}
       <UploadModal
         isOpen={isUploadModalOpen}
         onClose={() => setIsUploadModalOpen(false)}
         onLessonGenerated={handleLessonGenerated}
       />
+
+      {/* Create Lesson Modal */}
+      <CreateLessonModal
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        onCreateLesson={handleCreateNewLesson}
+      />
+
+      {/* Login Authentication Gate */}
+      <LoginModal
+        isOpen={!currentUser || isLoginModalOpen}
+        onLoginSuccess={handleLoginSuccess}
+      />
+
+      {/* Admin Panel Modal (Strictly for Admin) */}
+      <AdminPanelModal
+        isOpen={isAdminPanelOpen && currentUser?.role === 'admin'}
+        onClose={() => setIsAdminPanelOpen(false)}
+        currentUser={currentUser}
+      />
+
     </div>
   );
 }

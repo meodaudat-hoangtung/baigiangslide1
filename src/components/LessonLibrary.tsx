@@ -21,6 +21,7 @@ import {
 import { MathLesson } from '../types';
 import { EditLessonModal } from './EditLessonModal';
 import { DeleteLessonModal } from './DeleteLessonModal';
+import { EmptyLessonState } from './EmptyLessonState';
 import { StorageService } from '../services/storageService';
 
 interface LessonLibraryProps {
@@ -32,6 +33,7 @@ interface LessonLibraryProps {
   onDuplicateLesson?: (lesson: MathLesson) => void;
   onImportLesson: (lesson: MathLesson) => void;
   onOpenUploadModal: () => void;
+  onOpenCreateModal?: () => void;
   onRefreshCloudSync: () => void;
   isSyncing: boolean;
   isOnline?: boolean;
@@ -46,6 +48,7 @@ export const LessonLibrary: React.FC<LessonLibraryProps> = ({
   onDuplicateLesson,
   onImportLesson,
   onOpenUploadModal,
+  onOpenCreateModal,
   onRefreshCloudSync,
   isSyncing,
   isOnline = true,
@@ -200,7 +203,7 @@ export const LessonLibrary: React.FC<LessonLibraryProps> = ({
 
           {/* Create new */}
           <button
-            onClick={onOpenUploadModal}
+            onClick={onOpenCreateModal || onOpenUploadModal}
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-indigo-500 to-blue-600 hover:from-indigo-600 hover:to-blue-700 text-white text-xs font-bold shadow-lg shadow-indigo-500/30 transition-all"
           >
             <Plus className="w-4 h-4" />
@@ -209,161 +212,172 @@ export const LessonLibrary: React.FC<LessonLibraryProps> = ({
         </div>
       </div>
 
-      {/* Search and Filters */}
-      {lessons.length > 2 && (
-        <div className="flex items-center gap-3 bg-slate-900/60 p-3 rounded-2xl border border-slate-800">
-          <Search className="w-4 h-4 text-slate-500 ml-2" />
-          <input
-            type="text"
-            placeholder="Tìm kiếm bài giảng theo tên, khối lớp hoặc chủ đề..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="bg-transparent flex-1 text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none"
-          />
-          {searchQuery && (
-            <button
-              onClick={() => setSearchQuery('')}
-              className="text-xs text-slate-500 hover:text-slate-300 mr-2"
-            >
-              Xóa tìm
-            </button>
+      {lessons.length === 0 ? (
+        <EmptyLessonState
+          onOpenCreateModal={onOpenCreateModal || onOpenUploadModal}
+          onImportLesson={onImportLesson}
+          onRefreshCloudSync={onRefreshCloudSync}
+          isSyncing={isSyncing}
+        />
+      ) : (
+        <>
+          {/* Search and Filters */}
+          {lessons.length > 2 && (
+            <div className="flex items-center gap-3 bg-slate-900/60 p-3 rounded-2xl border border-slate-800">
+              <Search className="w-4 h-4 text-slate-500 ml-2" />
+              <input
+                type="text"
+                placeholder="Tìm kiếm bài giảng theo tên, khối lớp hoặc chủ đề..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="bg-transparent flex-1 text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="text-xs text-slate-500 hover:text-slate-300 mr-2"
+                >
+                  Xóa tìm
+                </button>
+              )}
+            </div>
           )}
-        </div>
-      )}
 
-      {/* Lesson Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-        {filteredLessons.map((lesson) => {
-          const isActive = currentLessonId === lesson.id;
+          {/* Lesson Cards Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            {filteredLessons.map((lesson) => {
+              const isActive = currentLessonId === lesson.id;
 
-          return (
-            <div
-              key={lesson.id}
-              onClick={() => onSelectLesson(lesson)}
-              className={`p-5 rounded-3xl border cursor-pointer transition-all duration-200 flex flex-col justify-between shadow-xl group relative ${
-                isActive
-                  ? 'bg-gradient-to-br from-indigo-950/90 via-slate-900 to-slate-900 border-indigo-500 shadow-indigo-500/20 ring-2 ring-indigo-500/40'
-                  : 'bg-slate-900/90 hover:bg-slate-850 border-slate-800 hover:border-slate-700'
-              }`}
-            >
-              <div>
-                {/* Badge & Active indicator */}
-                <div className="flex items-center justify-between pb-3 border-b border-slate-800 mb-3">
-                  <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-slate-800 text-indigo-300 border border-slate-700 truncate max-w-[180px]">
-                    {lesson.grade}
-                  </span>
-                  {isActive ? (
-                    <span className="flex items-center gap-1 text-xs text-emerald-400 font-semibold">
-                      <CheckCircle2 className="w-3.5 h-3.5" /> Đang dạy
-                    </span>
-                  ) : (
-                    <span className="text-[11px] text-slate-500 flex items-center gap-1">
-                      <Calendar className="w-3 h-3" />
-                      {new Date(lesson.updatedAt || lesson.createdAt).toLocaleDateString('vi-VN')}
-                    </span>
-                  )}
-                </div>
+              return (
+                <div
+                  key={lesson.id}
+                  onClick={() => onSelectLesson(lesson)}
+                  className={`p-5 rounded-3xl border cursor-pointer transition-all duration-200 flex flex-col justify-between shadow-xl group relative ${
+                    isActive
+                      ? 'bg-gradient-to-br from-indigo-950/90 via-slate-900 to-slate-900 border-indigo-500 shadow-indigo-500/20 ring-2 ring-indigo-500/40'
+                      : 'bg-slate-900/90 hover:bg-slate-850 border-slate-800 hover:border-slate-700'
+                  }`}
+                >
+                  <div>
+                    {/* Badge & Active indicator */}
+                    <div className="flex items-center justify-between pb-3 border-b border-slate-800 mb-3">
+                      <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-slate-800 text-indigo-300 border border-slate-700 truncate max-w-[180px]">
+                        {lesson.grade}
+                      </span>
+                      {isActive ? (
+                        <span className="flex items-center gap-1 text-xs text-emerald-400 font-semibold">
+                          <CheckCircle2 className="w-3.5 h-3.5" /> Đang dạy
+                        </span>
+                      ) : (
+                        <span className="text-[11px] text-slate-500 flex items-center gap-1">
+                          <Calendar className="w-3 h-3" />
+                          {new Date(lesson.updatedAt || lesson.createdAt).toLocaleDateString('vi-VN')}
+                        </span>
+                      )}
+                    </div>
 
-                {/* Lesson Title */}
-                <h3 className="font-bold text-base text-white line-clamp-2 mb-1.5 group-hover:text-indigo-300 transition-colors">
-                  {lesson.title}
-                </h3>
-                <p className="text-xs text-slate-400 line-clamp-1 mb-4">
-                  {lesson.chapterOrTopic}
-                </p>
+                    {/* Lesson Title */}
+                    <h3 className="font-bold text-base text-white line-clamp-2 mb-1.5 group-hover:text-indigo-300 transition-colors">
+                      {lesson.title}
+                    </h3>
+                    <p className="text-xs text-slate-400 line-clamp-1 mb-4">
+                      {lesson.chapterOrTopic}
+                    </p>
 
-                {/* Features count pills */}
-                <div className="flex items-center gap-2 text-xs text-slate-300 mb-4">
-                  <span className="px-2 py-1 rounded-lg bg-slate-800 border border-slate-700 flex items-center gap-1">
-                    <Layers className="w-3 h-3 text-indigo-400" />
-                    {lesson.slides.length} Slides
-                  </span>
-                  <span className="px-2 py-1 rounded-lg bg-slate-800 border border-slate-700 flex items-center gap-1">
-                    <HelpCircle className="w-3 h-3 text-emerald-400" />
-                    {lesson.questions.length} Câu hỏi
-                  </span>
-                </div>
-              </div>
+                    {/* Features count pills */}
+                    <div className="flex items-center gap-2 text-xs text-slate-300 mb-4">
+                      <span className="px-2 py-1 rounded-lg bg-slate-800 border border-slate-700 flex items-center gap-1">
+                        <Layers className="w-3 h-3 text-indigo-400" />
+                        {lesson.slides.length} Slides
+                      </span>
+                      <span className="px-2 py-1 rounded-lg bg-slate-800 border border-slate-700 flex items-center gap-1">
+                        <HelpCircle className="w-3 h-3 text-emerald-400" />
+                        {lesson.questions.length} Câu hỏi
+                      </span>
+                    </div>
+                  </div>
 
-              {/* Bottom Card Actions: Edit, Duplicate, Export, Delete */}
-              <div className="flex items-center justify-between pt-3 border-t border-slate-800 text-xs gap-1">
-                <div className="flex items-center gap-1">
-                  {/* Edit Lesson Info */}
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setEditingLesson(lesson);
-                      setIsEditModalOpen(true);
-                    }}
-                    title="Chỉnh sửa thông tin bài giảng"
-                    className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-indigo-600/30 text-slate-300 hover:text-indigo-300 border border-slate-700/80 flex items-center gap-1 transition-all"
-                  >
-                    <Edit3 className="w-3.5 h-3.5" />
-                    <span className="text-[11px] hidden sm:inline">Sửa</span>
-                  </button>
+                  {/* Bottom Card Actions: Edit, Duplicate, Export, Delete */}
+                  <div className="flex items-center justify-between pt-3 border-t border-slate-800 text-xs gap-1">
+                    <div className="flex items-center gap-1">
+                      {/* Edit Lesson Info */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingLesson(lesson);
+                          setIsEditModalOpen(true);
+                        }}
+                        title="Chỉnh sửa thông tin bài giảng"
+                        className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-indigo-600/30 text-slate-300 hover:text-indigo-300 border border-slate-700/80 flex items-center gap-1 transition-all"
+                      >
+                        <Edit3 className="w-3.5 h-3.5" />
+                        <span className="text-[11px] hidden sm:inline">Sửa</span>
+                      </button>
 
-                  {/* Duplicate Lesson */}
-                  {onDuplicateLesson && (
+                      {/* Duplicate Lesson */}
+                      {onDuplicateLesson && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onDuplicateLesson(lesson);
+                          }}
+                          title="Tạo bản sao bài giảng"
+                          className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/80 flex items-center gap-1 transition-all"
+                        >
+                          <Copy className="w-3.5 h-3.5 text-sky-400" />
+                          <span className="text-[11px] hidden sm:inline">Sao chép</span>
+                        </button>
+                      )}
+
+                      {/* Export JSON */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleExportLesson(lesson);
+                        }}
+                        title="Xuất file JSON sao lưu"
+                        className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/80 flex items-center gap-1 transition-all"
+                      >
+                        <Download className="w-3.5 h-3.5 text-emerald-400" />
+                        <span className="text-[11px] hidden sm:inline">JSON</span>
+                      </button>
+                    </div>
+
+                    {/* Delete Lesson */}
                     <button
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
-                        onDuplicateLesson(lesson);
+                        setDeletingLesson(lesson);
+                        setIsDeleteModalOpen(true);
                       }}
-                      title="Tạo bản sao bài giảng"
-                      className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/80 flex items-center gap-1 transition-all"
+                      title="Xóa bài giảng khỏi kho"
+                      className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-rose-950/50 text-slate-400 hover:text-rose-400 border border-slate-700/80 transition-colors"
                     >
-                      <Copy className="w-3.5 h-3.5 text-sky-400" />
-                      <span className="text-[11px] hidden sm:inline">Sao chép</span>
+                      <Trash2 className="w-3.5 h-3.5" />
                     </button>
-                  )}
-
-                  {/* Export JSON */}
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleExportLesson(lesson);
-                    }}
-                    title="Xuất file JSON sao lưu"
-                    className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/80 flex items-center gap-1 transition-all"
-                  >
-                    <Download className="w-3.5 h-3.5 text-emerald-400" />
-                    <span className="text-[11px] hidden sm:inline">JSON</span>
-                  </button>
+                  </div>
                 </div>
+              );
+            })}
+          </div>
 
-                {/* Delete Lesson */}
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setDeletingLesson(lesson);
-                    setIsDeleteModalOpen(true);
-                  }}
-                  title="Xóa bài giảng khỏi kho"
-                  className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-rose-950/50 text-slate-400 hover:text-rose-400 border border-slate-700/80 transition-colors"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              </div>
+          {/* Empty Search Result */}
+          {filteredLessons.length === 0 && (
+            <div className="p-12 rounded-3xl bg-slate-900 border border-slate-800 text-center space-y-3">
+              <p className="text-sm text-slate-400">Không tìm thấy bài giảng nào khớp với từ khóa "{searchQuery}"</p>
+              <button
+                onClick={() => setSearchQuery('')}
+                className="px-4 py-2 rounded-xl bg-indigo-600 text-white font-semibold text-xs"
+              >
+                Hiển thị tất cả
+              </button>
             </div>
-          );
-        })}
-      </div>
-
-      {/* Empty Search Result */}
-      {filteredLessons.length === 0 && (
-        <div className="p-12 rounded-3xl bg-slate-900 border border-slate-800 text-center space-y-3">
-          <p className="text-sm text-slate-400">Không tìm thấy bài giảng nào khớp với từ khóa "{searchQuery}"</p>
-          <button
-            onClick={() => setSearchQuery('')}
-            className="px-4 py-2 rounded-xl bg-indigo-600 text-white font-semibold text-xs"
-          >
-            Hiển thị tất cả
-          </button>
-        </div>
+          )}
+        </>
       )}
 
       {/* Edit Lesson Modal */}

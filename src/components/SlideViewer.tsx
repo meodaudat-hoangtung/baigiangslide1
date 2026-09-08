@@ -41,6 +41,7 @@ import { MathView } from './MathView';
 import { SlideEditModal } from './SlideEditModal';
 import { DeleteSlideModal } from './DeleteSlideModal';
 import { SlideImageModal } from './SlideImageModal';
+import { MediaBlockRenderer } from './MediaBlockRenderer';
 import { BLOCK_TYPES_META, getSectionBlocks, getSlideBlocks } from '../utils/slideBlocks';
 
 interface SlideViewerProps {
@@ -970,6 +971,16 @@ export const SlideViewer: React.FC<SlideViewerProps> = ({
                               )}
                             </div>
                           </div>
+                        );
+                      }
+
+                      // 0.0b Video / Audio Media Block
+                      if (block.type === 'media') {
+                        return (
+                          <MediaBlockRenderer
+                            key={block.id || bIdx}
+                            block={block}
+                          />
                         );
                       }
 

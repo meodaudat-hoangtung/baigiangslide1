@@ -149,7 +149,8 @@ export type SlideBlockType =
   | 'example_note'    // Chú ý từ ví dụ (Nhận xét, phương pháp)
   | 'practice'        // Luyện tập (Bài tập rèn luyện, gợi ý, lời giải)
   | 'application'     // Vận dụng (Bài toán thực tế, hướng dẫn)
-  | 'image';          // Chèn hình ảnh tùy chỉnh vị trí, kích thước, chú thích
+  | 'image'           // Chèn hình ảnh tùy chỉnh vị trí, kích thước, chú thích
+  | 'media';          // Chèn Video, Audio / Đường link video YouTube, MP4, MP3, Drive
 
 export interface SlideContentBlock {
   id: string;
@@ -181,6 +182,14 @@ export interface SlideContentBlock {
   imageAlt?: string;
   imagePosition?: 'center' | 'left' | 'right' | 'full';
   imageWidthPercent?: number; // 25, 33, 50, 75, 100
+  // Khối Video / Audio (Media Block) fields:
+  mediaType?: 'video' | 'audio' | 'youtube' | 'drive';
+  mediaUrl?: string; // Link URL (YouTube, Drive, mp4, mp3...) hoặc base64 data URL
+  mediaCaption?: string; // Chú thích video / audio (hỗ trợ MathView LaTeX)
+  mediaPosition?: 'center' | 'left' | 'right' | 'full';
+  mediaWidthPercent?: number; // 33, 50, 75, 100
+  mediaAutoplay?: boolean;
+  mediaLoop?: boolean;
   // PowerPoint Block-Level Custom Animation fields:
   animation?: BlockAnimationEffect; // Hiệu ứng hoạt họa riêng biệt của khối
   animationDelay?: number; // Độ trễ xuất hiện (giây), vd: 0, 0.2, 0.4, 0.8...
@@ -329,3 +338,25 @@ export interface MathLesson {
   summary: LessonSummary;
   config: GenerationConfig;
 }
+
+export type UserRole = 'admin' | 'member' | 'guest';
+export type UserStatus = 'active' | 'pending' | 'blocked';
+
+export interface AppUser {
+  uid: string;
+  email: string;
+  username?: string;
+  password?: string;
+  phone?: string;
+  displayName: string;
+  photoURL?: string;
+  role: UserRole;
+  status: UserStatus;
+  createdAt: number;
+  lastLoginAt: number;
+  bio?: string;
+  schoolName?: string;
+  createdBy?: string;
+  notes?: string;
+}
+

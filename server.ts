@@ -64,6 +64,12 @@ function loadDatabaseFromDisk() {
       if (Array.isArray(list)) {
         list.forEach((l) => {
           if (!deletedIdsSet.has(l.id)) {
+            // If this is an unmodified default sample lesson, reset timestamp to fixed historical baseline
+            const sampleMatch = SAMPLE_LESSONS.find((s) => s.id === l.id);
+            if (sampleMatch && l.slides.length === sampleMatch.slides.length && (!l.questions || l.questions.length === sampleMatch.questions.length)) {
+              l.updatedAt = 1700000000000;
+              l.createdAt = 1700000000000;
+            }
             serverLessonDatabase.set(l.id, l);
           }
         });
@@ -78,7 +84,7 @@ function loadDatabaseFromDisk() {
   // Seed with sample lessons ONLY if no lessons.json file ever existed
   SAMPLE_LESSONS.forEach((l) => {
     if (!deletedIdsSet.has(l.id)) {
-      serverLessonDatabase.set(l.id, l);
+      serverLessonDatabase.set(l.id, { ...l, createdAt: 1700000000000, updatedAt: 1700000000000 });
     }
   });
   saveDatabaseToDisk();
@@ -120,7 +126,7 @@ app.post('/api/sync-save-lesson', (req, res) => {
     }
     // If the user explicitly saved/created this lesson, un-delete it if was previously marked deleted
     deletedIdsSet.delete(lesson.id);
-    lesson.updatedAt = Date.now();
+    lesson.updatedAt = lesson.updatedAt || Date.now();
     serverLessonDatabase.set(lesson.id, lesson);
     saveDatabaseToDisk();
     res.json({ success: true, lesson, syncedAt: lesson.updatedAt });

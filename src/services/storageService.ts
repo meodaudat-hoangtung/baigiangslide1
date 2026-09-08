@@ -1,5 +1,6 @@
 import { MathLesson } from '../types';
 import { SAMPLE_LESSONS } from '../data/sampleLessons';
+import { FirestoreService } from './firestoreService';
 
 const DB_NAME = 'bai_giang_toan_db';
 const DB_VERSION = 1;
@@ -180,8 +181,9 @@ export const StorageService = {
           const localMap = new Map(localData.map((l) => [l.id, l]));
           const serverMap = new Map(activeServerLessons.map((l) => [l.id, l]));
           const mergedMap = new Map<string, MathLesson>();
+          const sampleLessonIds = new Set(SAMPLE_LESSONS.map((s) => s.id));
 
-          // Add active local items (prefer server if server is strictly newer)
+          // Add active local items (prefer local modifications unless server has a strictly newer version from another tab)
           localMap.forEach((lVal, key) => {
             if (!deletedIds.has(key)) {
               const sVal = serverMap.get(key);
@@ -189,14 +191,31 @@ export const StorageService = {
                 mergedMap.set(key, sVal);
               } else {
                 mergedMap.set(key, lVal);
+                // If local has edits that the server doesn't have yet, sync to server in background
+                if (!sVal || (lVal.updatedAt || 0) > (sVal.updatedAt || 0)) {
+                  fetch('/api/sync-save-lesson', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(lVal),
+                  }).catch(() => {});
+                }
               }
             }
           });
 
-          // Also bring in any brand new server lessons not present locally (unless deleted)
+          // Process items on server not present in localMap:
           serverMap.forEach((sVal, key) => {
             if (!localMap.has(key) && !deletedIds.has(key)) {
-              mergedMap.set(key, sVal);
+              if (sampleLessonIds.has(key)) {
+                // If a default sample lesson is absent locally in an initialized app, the user DELETED it!
+                // Do NOT resurrect it! Tombstone it permanently.
+                recordDeletedLessonId(key);
+                deletedIds.add(key);
+                fetch(`/api/sync-delete-lesson/${key}`, { method: 'DELETE' }).catch(() => {});
+              } else {
+                // Genuinely new custom lesson created from another tab or device
+                mergedMap.set(key, sVal);
+              }
             }
           });
 
@@ -240,9 +259,9 @@ export const StorageService = {
   async saveLesson(lesson: MathLesson, allLessons: MathLesson[]): Promise<{ isSynced: boolean }> {
     unrecordDeletedLessonId(lesson.id);
 
-    const updatedLesson = {
+    const updatedLesson: MathLesson = {
       ...lesson,
-      updatedAt: Date.now(),
+      updatedAt: lesson.updatedAt || Date.now(),
     };
 
     // Update list
@@ -264,16 +283,31 @@ export const StorageService = {
       console.error('Local save error:', err);
     }
 
-    // 2. Sync with cloud backend
+    // 2. Sync with cloud backend (both Express server & Firestore)
     let isSynced = false;
     try {
-      const res = await fetch('/api/sync-save-lesson', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updatedLesson),
-      });
-      if (res.ok) {
+      const [res] = await Promise.allSettled([
+        fetch('/api/sync-save-lesson', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updatedLesson),
+        }),
+        FirestoreService.saveLessonToFirestore(updatedLesson).catch((e) => {
+          console.warn('Firestore direct sync failed:', e);
+        }),
+      ]);
+
+      if (res.status === 'fulfilled' && res.value.ok) {
         isSynced = true;
+        const data = await res.value.json().catch(() => null);
+        if (data && data.syncedAt) {
+          updatedLesson.updatedAt = data.syncedAt;
+          const syncedList = nextLessons.map((l) => (l.id === updatedLesson.id ? updatedLesson : l));
+          try {
+            localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(syncedList));
+            await saveLessonToIndexedDB(updatedLesson);
+          } catch {}
+        }
       }
     } catch (err) {
       console.warn('Offline: Saved locally, will sync when online', err);
@@ -298,9 +332,14 @@ export const StorageService = {
       console.error('Error deleting locally:', err);
     }
 
-    // 3. Sync deletion to server
+    // 3. Sync deletion to server & Firestore
     try {
-      await fetch(`/api/sync-delete-lesson/${lessonId}`, { method: 'DELETE' });
+      await Promise.allSettled([
+        fetch(`/api/sync-delete-lesson/${lessonId}`, { method: 'DELETE' }),
+        FirestoreService.deleteLessonFromFirestore(lessonId).catch((e) => {
+          console.warn('Firestore delete failed:', e);
+        }),
+      ]);
     } catch (err) {
       console.warn('Offline: Deleted locally, server will sync later', err);
     }
