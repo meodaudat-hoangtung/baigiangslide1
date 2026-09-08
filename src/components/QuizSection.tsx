@@ -20,7 +20,9 @@ import {
   ListOrdered,
   Search,
   Check,
-  AlertCircle
+  AlertCircle,
+  Maximize2,
+  X
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Question, QuestionType, MathLesson } from '../types';
@@ -47,6 +49,7 @@ export const QuizSection: React.FC<QuizSectionProps> = ({
   );
   const [activeFilter, setActiveFilter] = useState<'all' | QuestionType>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [zoomedImage, setZoomedImage] = useState<string | null>(null);
 
   // Modals state
   const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
@@ -638,38 +641,58 @@ export const QuizSection: React.FC<QuizSectionProps> = ({
                 </div>
               </div>
 
-              {/* Question Passage / Ngữ cảnh dữ kiện chung (nếu có) */}
-              {currentQuestion.passage && (
-                <div className="p-4 rounded-2xl bg-indigo-950/30 border border-indigo-500/30 text-slate-200 text-sm sm:text-base leading-relaxed space-y-1.5 shadow-sm">
-                  <div className="text-[11px] font-bold text-indigo-300 uppercase tracking-wider flex items-center gap-1.5">
-                    <FileText className="w-3.5 h-3.5 text-indigo-400" />
-                    <span>Dữ kiện chung / Ngữ cảnh:</span>
-                  </div>
-                  <div className="font-medium text-slate-100 pl-0.5">
-                    <MathView content={currentQuestion.passage} />
-                  </div>
-                </div>
-              )}
-
-              {/* Question Attached Image (nếu có) */}
-              {currentQuestion.imageUrl && (
-                <div className="flex flex-col items-center justify-center p-3 rounded-2xl bg-slate-950/90 border border-slate-800">
-                  <img
-                    src={currentQuestion.imageUrl}
-                    alt={`Hình ảnh câu ${currentQuestion.questionNumber || ''}`}
-                    className="max-h-72 max-w-full rounded-xl object-contain shadow-lg"
-                  />
-                  {currentQuestion.imageCaption && (
-                    <p className="text-xs text-slate-400 mt-2 italic text-center font-sans">
-                      {currentQuestion.imageCaption}
-                    </p>
+              {/* Question Content: Passage & Prompt on the left, Attached Image in the upper right corner */}
+              <div className={`flex flex-col ${currentQuestion.imageUrl ? 'lg:flex-row items-start justify-between gap-6' : 'space-y-4'}`}>
+                {/* Left/Main Column: Passage + Prompt */}
+                <div className="flex-1 min-w-0 space-y-4 w-full">
+                  {/* Question Passage / Ngữ cảnh dữ kiện chung (nếu có) */}
+                  {currentQuestion.passage && (
+                    <div className="p-4 rounded-2xl bg-indigo-950/30 border border-indigo-500/30 text-slate-200 text-sm sm:text-base leading-relaxed space-y-1.5 shadow-sm">
+                      <div className="text-[11px] font-bold text-indigo-300 uppercase tracking-wider flex items-center gap-1.5">
+                        <FileText className="w-3.5 h-3.5 text-indigo-400" />
+                        <span>Dữ kiện chung / Ngữ cảnh:</span>
+                      </div>
+                      <div className="font-medium text-slate-100 pl-0.5">
+                        <MathView content={currentQuestion.passage} />
+                      </div>
+                    </div>
                   )}
-                </div>
-              )}
 
-              {/* Question Prompt Content (Render KaTeX Math) */}
-              <div className="text-base sm:text-lg text-slate-100 font-semibold leading-relaxed p-1">
-                <MathView content={currentQuestion.prompt} />
+                  {/* Question Prompt Content (Render KaTeX Math) */}
+                  <div className="text-base sm:text-lg text-slate-100 font-semibold leading-relaxed p-1">
+                    <MathView content={currentQuestion.prompt} />
+                  </div>
+                </div>
+
+                {/* Upper Right Corner: Attached Image (Hình ảnh minh họa góc trên bên phải) */}
+                {currentQuestion.imageUrl && (
+                  <div className="w-full lg:w-72 xl:w-80 shrink-0 self-start">
+                    <div className="p-2.5 rounded-2xl bg-slate-950/90 border border-slate-800 shadow-xl overflow-hidden group">
+                      <div className="relative flex items-center justify-center bg-slate-900/50 rounded-xl overflow-hidden min-h-[140px] max-h-64">
+                        <img
+                          src={currentQuestion.imageUrl}
+                          alt={`Hình ảnh câu ${currentQuestion.questionNumber || ''}`}
+                          className="max-h-64 w-auto max-w-full rounded-lg object-contain cursor-pointer transition-transform duration-300 group-hover:scale-[1.02]"
+                          onClick={() => setZoomedImage(currentQuestion.imageUrl || null)}
+                          title="Bấm để phóng to ảnh minh họa"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setZoomedImage(currentQuestion.imageUrl || null)}
+                          className="absolute top-2 right-2 p-1.5 rounded-lg bg-slate-900/80 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700/60 shadow opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                          title="Phóng to ảnh"
+                        >
+                          <Maximize2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                      {currentQuestion.imageCaption && (
+                        <p className="text-xs text-slate-400 mt-2 italic text-center font-sans">
+                          {currentQuestion.imageCaption}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* ========================================================= */}
@@ -980,6 +1003,33 @@ export const QuizSection: React.FC<QuizSectionProps> = ({
         onClose={() => setIsDeleteModalOpen(false)}
         onConfirm={handleConfirmDelete}
       />
+
+      {/* Lightbox Modal: Zoom In Question Illustration Image */}
+      {zoomedImage && (
+        <div
+          className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200"
+          onClick={() => setZoomedImage(null)}
+        >
+          <div
+            className="relative max-w-4xl max-h-[90vh] bg-slate-900 border border-slate-700/80 rounded-2xl p-4 shadow-2xl flex flex-col items-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => setZoomedImage(null)}
+              className="absolute top-3 right-3 p-2 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition-colors shadow-lg cursor-pointer"
+              title="Đóng"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <img
+              src={zoomedImage}
+              alt="Hình ảnh minh họa phóng to"
+              className="max-h-[80vh] max-w-full object-contain rounded-xl shadow-2xl"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 };
