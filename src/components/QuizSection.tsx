@@ -22,6 +22,7 @@ import {
   Check,
   AlertCircle,
   Maximize2,
+  Image as ImageIcon,
   X
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
@@ -580,7 +581,7 @@ export const QuizSection: React.FC<QuizSectionProps> = ({
                       </span>
                     </div>
                     {currentQuestion.targetConcept && (
-                      <p className="text-xs text-slate-400 mt-0.5 font-medium">
+                      <p className="text-xs text-white mt-0.5 font-medium">
                         Kiến thức: {currentQuestion.targetConcept}
                       </p>
                     )}
@@ -595,7 +596,7 @@ export const QuizSection: React.FC<QuizSectionProps> = ({
                     className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-md ${
                       revealedSolutions[currentQuestion.id]
                         ? 'bg-emerald-600 text-white ring-2 ring-emerald-400/80'
-                        : 'bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white border border-slate-700'
+                        : 'bg-slate-800 text-white hover:bg-slate-700 border border-slate-700'
                     }`}
                     title={revealedSolutions[currentQuestion.id] ? 'Đang hiện đáp án' : 'Đáp án đang bị ẩn'}
                   >
@@ -615,7 +616,7 @@ export const QuizSection: React.FC<QuizSectionProps> = ({
                   {/* Reset this question */}
                   <button
                     onClick={() => resetCurrentQuestionAnswer(currentQuestion.id)}
-                    className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white border border-slate-700 transition-colors"
+                    className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 transition-colors"
                     title="Làm lại câu này"
                   >
                     <RotateCcw className="w-3.5 h-3.5" />
@@ -624,7 +625,7 @@ export const QuizSection: React.FC<QuizSectionProps> = ({
                   {/* Edit Question */}
                   <button
                     onClick={() => handleOpenEditQuestion(currentQuestion)}
-                    className="p-2 rounded-xl bg-slate-800 hover:bg-indigo-600/40 text-slate-400 hover:text-indigo-300 border border-slate-700 transition-colors"
+                    className="p-2 rounded-xl bg-slate-800 hover:bg-indigo-600/40 text-white hover:text-indigo-300 border border-slate-700 transition-colors"
                     title="Chỉnh sửa câu hỏi"
                   >
                     <Edit3 className="w-3.5 h-3.5" />
@@ -633,7 +634,7 @@ export const QuizSection: React.FC<QuizSectionProps> = ({
                   {/* Delete Question */}
                   <button
                     onClick={() => handleOpenDeleteQuestion(currentQuestion)}
-                    className="p-2 rounded-xl bg-slate-800 hover:bg-rose-950/60 text-slate-400 hover:text-rose-400 border border-slate-700 transition-colors"
+                    className="p-2 rounded-xl bg-slate-800 hover:bg-rose-950/60 text-white hover:text-rose-400 border border-slate-700 transition-colors"
                     title="Xóa câu hỏi"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
@@ -642,37 +643,44 @@ export const QuizSection: React.FC<QuizSectionProps> = ({
               </div>
 
               {/* Question Content: Passage & Prompt on the left, Attached Image in the upper right corner */}
-              <div className={`flex flex-col ${currentQuestion.imageUrl ? 'lg:flex-row items-start justify-between gap-6' : 'space-y-4'}`}>
+              <div className={`flex flex-col ${currentQuestion.imageUrl ? 'sm:flex-row items-start justify-between gap-6' : 'space-y-4'}`}>
                 {/* Left/Main Column: Passage + Prompt */}
                 <div className="flex-1 min-w-0 space-y-4 w-full">
                   {/* Question Passage / Ngữ cảnh dữ kiện chung (nếu có) */}
                   {currentQuestion.passage && (
-                    <div className="p-4 rounded-2xl bg-indigo-950/30 border border-indigo-500/30 text-slate-200 text-sm sm:text-base leading-relaxed space-y-1.5 shadow-sm">
-                      <div className="text-[11px] font-bold text-indigo-300 uppercase tracking-wider flex items-center gap-1.5">
+                    <div className="p-4 rounded-2xl bg-indigo-950/30 border border-indigo-500/30 text-white text-sm sm:text-base leading-relaxed space-y-1.5 shadow-sm">
+                      <div className="text-[11px] font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
                         <FileText className="w-3.5 h-3.5 text-indigo-400" />
                         <span>Dữ kiện chung / Ngữ cảnh:</span>
                       </div>
-                      <div className="font-medium text-slate-100 pl-0.5">
+                      <div className="font-medium text-white pl-0.5">
                         <MathView content={currentQuestion.passage} />
                       </div>
                     </div>
                   )}
 
                   {/* Question Prompt Content (Render KaTeX Math) */}
-                  <div className="text-base sm:text-lg text-slate-100 font-semibold leading-relaxed p-1">
+                  <div className="text-base sm:text-lg text-white font-semibold leading-relaxed p-1">
                     <MathView content={currentQuestion.prompt} />
                   </div>
                 </div>
 
-                {/* Upper Right Corner: Attached Image (Hình ảnh minh họa góc trên bên phải) */}
+                {/* Upper Right Corner: Attached Image (Hình ảnh minh họa góc trên bên phải cửa sổ câu hỏi) */}
                 {currentQuestion.imageUrl && (
-                  <div className="w-full lg:w-72 xl:w-80 shrink-0 self-start">
-                    <div className="p-2.5 rounded-2xl bg-slate-950/90 border border-slate-800 shadow-xl overflow-hidden group">
+                  <div className="w-full sm:w-72 md:w-80 lg:w-80 xl:w-96 shrink-0 self-start">
+                    <div className="p-2.5 rounded-2xl bg-slate-950/90 border border-slate-700/80 shadow-xl overflow-hidden group">
+                      <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-800 text-[11px] font-bold text-emerald-400 uppercase tracking-wider">
+                        <span className="flex items-center gap-1.5">
+                          <ImageIcon className="w-3.5 h-3.5" />
+                          Hình ảnh minh họa
+                        </span>
+                        <span className="text-[10px] text-slate-400 lowercase font-normal">(nhấp để phóng to)</span>
+                      </div>
                       <div className="relative flex items-center justify-center bg-slate-900/50 rounded-xl overflow-hidden min-h-[140px] max-h-64">
                         <img
                           src={currentQuestion.imageUrl}
-                          alt={`Hình ảnh câu ${currentQuestion.questionNumber || ''}`}
-                          className="max-h-64 w-auto max-w-full rounded-lg object-contain cursor-pointer transition-transform duration-300 group-hover:scale-[1.02]"
+                          alt={`Hình ảnh minh họa câu ${currentQuestion.questionNumber || ''}`}
+                          className="max-h-64 w-auto max-w-full rounded-lg object-contain cursor-zoom-in transition-transform duration-300 group-hover:scale-[1.02]"
                           onClick={() => setZoomedImage(currentQuestion.imageUrl || null)}
                           title="Bấm để phóng to ảnh minh họa"
                         />
@@ -686,7 +694,7 @@ export const QuizSection: React.FC<QuizSectionProps> = ({
                         </button>
                       </div>
                       {currentQuestion.imageCaption && (
-                        <p className="text-xs text-slate-400 mt-2 italic text-center font-sans">
+                        <p className="text-xs text-white mt-2 italic text-center font-sans">
                           {currentQuestion.imageCaption}
                         </p>
                       )}
@@ -706,7 +714,7 @@ export const QuizSection: React.FC<QuizSectionProps> = ({
                     const uAns = userAnswers[currentQuestion.id] || {};
                     const isSelected = uAns.selectedOption === opt.key;
                     const isTeacherRevealed = !!revealedSolutions[currentQuestion.id];
-                    let btnStyle = 'bg-slate-800/70 border-slate-700/80 hover:bg-slate-800 hover:border-slate-600 text-slate-100';
+                    let btnStyle = 'bg-slate-800/70 border-slate-700/80 hover:bg-slate-800 hover:border-slate-600 text-white';
 
                     if (isTeacherRevealed) {
                       // Only when teacher clicks Eye icon
@@ -727,10 +735,10 @@ export const QuizSection: React.FC<QuizSectionProps> = ({
                         onClick={() => handleSelectOption(currentQuestion.id, opt.key)}
                         className={`p-4 rounded-2xl border text-left flex items-start gap-3.5 transition-all cursor-pointer ${btnStyle}`}
                       >
-                        <span className="w-7 h-7 rounded-xl bg-slate-950 border border-slate-700 flex items-center justify-center font-mono font-black text-xs text-indigo-300 flex-shrink-0">
+                        <span className="w-7 h-7 rounded-xl bg-slate-950 border border-slate-700 flex items-center justify-center font-mono font-black text-xs text-white flex-shrink-0">
                           {opt.key}
                         </span>
-                        <div className="flex-1 text-sm sm:text-base leading-relaxed">
+                        <div className="flex-1 text-sm sm:text-base leading-relaxed text-white">
                           <MathView content={opt.text} />
                         </div>
                         {isTeacherRevealed && opt.isCorrect && (
@@ -748,7 +756,7 @@ export const QuizSection: React.FC<QuizSectionProps> = ({
               {/* 2. True / False */}
               {currentQuestion.type === 'true_false' && currentQuestion.tfStatements && (
                 <div className="space-y-3 pt-2">
-                  <div className="grid grid-cols-12 text-xs font-bold text-slate-400 uppercase tracking-wider px-3 pb-1">
+                  <div className="grid grid-cols-12 text-xs font-bold text-white uppercase tracking-wider px-3 pb-1">
                     <div className="col-span-8">Ý Khẳng Định</div>
                     <div className="col-span-4 text-center">Xác Định Đúng / Sai</div>
                   </div>
@@ -763,7 +771,7 @@ export const QuizSection: React.FC<QuizSectionProps> = ({
                         key={stmt.id || sIdx}
                         className="p-4 rounded-2xl bg-slate-800/60 border border-slate-700/80 grid grid-cols-12 items-center gap-3"
                       >
-                        <div className="col-span-8 flex items-start gap-2.5 text-sm sm:text-base text-slate-100 font-medium">
+                        <div className="col-span-8 flex items-start gap-2.5 text-sm sm:text-base text-white font-medium">
                           <span className="font-bold text-xs bg-slate-950 px-2 py-1 rounded-lg text-emerald-400 font-mono border border-slate-800">
                             {String.fromCharCode(97 + sIdx)})
                           </span>
@@ -830,12 +838,12 @@ export const QuizSection: React.FC<QuizSectionProps> = ({
 
                   {revealedSolutions[currentQuestion.id] && currentQuestion.correctShortAnswer && (
                     <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-amber-500/40 text-xs sm:text-sm flex items-center justify-between">
-                      <span className="text-slate-200">
+                      <span className="text-white">
                         Đáp án chuẩn: <span className="font-mono font-bold text-amber-300 text-base ml-1">{currentQuestion.correctShortAnswer}</span>
-                        {currentQuestion.unitOrFormat && <span className="text-slate-400 ml-1">({currentQuestion.unitOrFormat})</span>}
+                        {currentQuestion.unitOrFormat && <span className="text-white/80 ml-1">({currentQuestion.unitOrFormat})</span>}
                       </span>
                       {currentQuestion.acceptableAnswers && currentQuestion.acceptableAnswers.length > 1 && (
-                        <span className="text-slate-400 text-xs">
+                        <span className="text-white/80 text-xs">
                           (Chấp nhận: {currentQuestion.acceptableAnswers.join(', ')})
                         </span>
                       )}
@@ -847,9 +855,9 @@ export const QuizSection: React.FC<QuizSectionProps> = ({
               {/* 4. Essay & Rubrics */}
               {currentQuestion.type === 'essay' && currentQuestion.essayRubric && (
                 <div className="pt-2 space-y-3">
-                  <div className="p-4 rounded-2xl bg-slate-950/60 border border-slate-800 text-xs text-slate-300 space-y-2">
-                    <div className="font-bold text-cyan-300 uppercase tracking-wide flex items-center gap-1.5">
-                      <FileText className="w-4 h-4" />
+                  <div className="p-4 rounded-2xl bg-slate-950/60 border border-slate-800 text-xs text-white space-y-2">
+                    <div className="font-bold text-white uppercase tracking-wide flex items-center gap-1.5">
+                      <FileText className="w-4 h-4 text-cyan-400" />
                       <span>Thang Điểm & Hướng Dẫn Chấm (Tổng {currentQuestion.essayRubric.totalPoints} Điểm)</span>
                     </div>
                     <div className="space-y-2 pt-1">
@@ -860,7 +868,7 @@ export const QuizSection: React.FC<QuizSectionProps> = ({
                         >
                           <div>
                             <span className="font-semibold text-white">{step.stepTitle}: </span>
-                            <span className="text-slate-300">{step.criteria}</span>
+                            <span className="text-white">{step.criteria}</span>
                           </div>
                           <span className="font-mono font-bold text-cyan-400 bg-cyan-950 px-2 py-0.5 rounded border border-cyan-800/80 flex-shrink-0">
                             +{step.points} đ
@@ -874,10 +882,10 @@ export const QuizSection: React.FC<QuizSectionProps> = ({
 
               {/* Hint Box (if any) */}
               {currentQuestion.hint && (
-                <div className="p-3.5 rounded-2xl bg-amber-950/30 border border-amber-500/30 text-amber-200 text-xs sm:text-sm flex items-start gap-2.5">
+                <div className="p-3.5 rounded-2xl bg-amber-950/30 border border-amber-500/30 text-white text-xs sm:text-sm flex items-start gap-2.5">
                   <Lightbulb className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
                   <div>
-                    <span className="font-bold text-amber-300 mr-1">Gợi ý tư duy: </span>
+                    <span className="font-bold text-white mr-1">Gợi ý tư duy: </span>
                     <MathView content={currentQuestion.hint} inline />
                   </div>
                 </div>
@@ -885,21 +893,21 @@ export const QuizSection: React.FC<QuizSectionProps> = ({
 
               {/* Detailed Solution / Lời giải chi tiết */}
               {revealedSolutions[currentQuestion.id] ? (
-                <div className="p-6 rounded-3xl bg-gradient-to-br from-indigo-950/60 via-slate-900 to-slate-900 border-2 border-emerald-500/40 text-slate-100 space-y-3 shadow-2xl animate-in fade-in slide-in-from-top-2 duration-200">
+                <div className="p-6 rounded-3xl bg-gradient-to-br from-indigo-950/60 via-slate-900 to-slate-900 border-2 border-emerald-500/40 text-white space-y-3 shadow-2xl animate-in fade-in slide-in-from-top-2 duration-200">
                   <div className="flex items-center justify-between pb-3 border-b border-indigo-800/40">
-                    <div className="font-black text-emerald-300 flex items-center gap-2 text-sm uppercase tracking-wide">
+                    <div className="font-black text-white flex items-center gap-2 text-sm uppercase tracking-wide">
                       <Sparkles className="w-4 h-4 text-emerald-400" />
                       <span>Đáp Án & Lời Giải Chi Tiết:</span>
                     </div>
                     <button
                       onClick={() => toggleSolutionVisibility(currentQuestion.id)}
-                      className="text-xs text-slate-400 hover:text-white flex items-center gap-1 font-semibold"
+                      className="text-xs text-white/80 hover:text-white flex items-center gap-1 font-semibold"
                     >
                       <EyeOff className="w-3.5 h-3.5" />
                       <span>Ẩn đi</span>
                     </button>
                   </div>
-                  <div className="text-sm sm:text-base leading-relaxed">
+                  <div className="text-sm sm:text-base leading-relaxed text-white">
                     <MathView content={currentQuestion.detailedSolution} />
                   </div>
                 </div>
@@ -908,8 +916,8 @@ export const QuizSection: React.FC<QuizSectionProps> = ({
                   onClick={() => toggleSolutionVisibility(currentQuestion.id)}
                   className="p-4 rounded-2xl bg-slate-950/60 border border-dashed border-slate-800 hover:border-emerald-500/50 flex items-center justify-between cursor-pointer group transition-all"
                 >
-                  <div className="flex items-center gap-2 text-xs sm:text-sm text-slate-400 group-hover:text-emerald-300">
-                    <Eye className="w-4 h-4 text-slate-500 group-hover:text-emerald-400 transition-colors" />
+                  <div className="flex items-center gap-2 text-xs sm:text-sm text-white group-hover:text-emerald-300">
+                    <Eye className="w-4 h-4 text-slate-400 group-hover:text-emerald-400 transition-colors" />
                     <span>Đáp án và lời giải chi tiết đang được ẩn. Nhấp để hiển thị...</span>
                   </div>
                   <span className="text-xs font-bold text-emerald-400 bg-emerald-950/60 border border-emerald-500/30 px-3 py-1 rounded-xl">

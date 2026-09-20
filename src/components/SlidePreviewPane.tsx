@@ -152,8 +152,8 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
       : 'font-slide-sans';
 
   const titleColor = styleConfig.titleColor || '#ffffff';
-  const subtitleColor = styleConfig.subtitleColor || '#93c5fd';
-  const textColor = styleConfig.textColor || '#f8fafc';
+  const subtitleColor = styleConfig.subtitleColor || '#ffffff';
+  const textColor = styleConfig.textColor || '#ffffff';
 
   // Get blocks on current slide
   const blocks = getSlideBlocks(slide);
@@ -933,7 +933,7 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
             initial="initial"
             animate="animate"
             exit="exit"
-            className={`relative z-10 transition-all ${fontClass} ${
+            className={`relative z-10 transition-all slide-presentation-area text-white ${fontClass} ${
               isFullscreen
                 ? tvDisplayFit === 'full'
                   ? 'w-full h-full max-h-screen overflow-hidden rounded-none border-0 shadow-none m-0 p-6 sm:p-8 lg:p-10 space-y-6 flex flex-col justify-between box-border select-none'
@@ -975,7 +975,7 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
           {/* ============================================================= */}
           {blocks.length > 0 && (
             <div
-              className={`space-y-6 ${
+              className={`space-y-6 slide-presentation-content text-white ${
                 isFullscreen
                   ? 'flex-1 min-h-0 overflow-y-auto no-scrollbar flex flex-col justify-center'
                   : ''
@@ -1057,7 +1057,7 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
                         )}
 
                         {block.imageCaption && (
-                          <div className="mt-2.5 text-center text-xs sm:text-sm text-slate-200 font-semibold px-2">
+                          <div className="mt-2.5 text-center text-xs sm:text-sm text-white font-semibold px-2">
                             <MathView content={block.imageCaption} inline />
                           </div>
                         )}
@@ -1088,7 +1088,7 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
                       className="p-6 sm:p-8 rounded-3xl bg-gradient-to-br from-indigo-950/70 via-slate-900 to-slate-950 border-2 border-indigo-500/50 shadow-2xl space-y-3"
                     >
                       <div
-                        className="text-2xl sm:text-3xl lg:text-4xl font-black uppercase tracking-tight"
+                        className="text-2xl sm:text-3xl lg:text-4xl font-black uppercase tracking-tight text-white"
                         style={{ color: titleColor }}
                       >
                         <MathView content={block.title || slide.title || 'Tiêu Đề Bài Học'} inline />
@@ -1096,7 +1096,7 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
 
                       {(block.subtitle || slide.subtitle) && (
                         <div
-                          className="text-sm sm:text-base lg:text-lg font-medium leading-relaxed"
+                          className="text-sm sm:text-base lg:text-lg font-medium leading-relaxed text-white"
                           style={{ color: subtitleColor }}
                         >
                           <MathView content={block.subtitle || slide.subtitle || ''} />
@@ -1121,7 +1121,7 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
                       key={block.id || bIdx}
                       className="p-5 sm:p-6 rounded-3xl bg-indigo-950/40 border-2 border-indigo-500/40 shadow-xl space-y-3"
                     >
-                      <div className="flex items-center gap-2 text-sm sm:text-base font-black uppercase text-indigo-300">
+                      <div className="flex items-center gap-2 text-sm sm:text-base font-black uppercase text-white">
                         <Target className="w-5 h-5 text-emerald-400" />
                         <span>
                           <MathView content={block.title || 'Mục Tiêu Bài Học'} inline />
@@ -1129,7 +1129,7 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
                       </div>
 
                       {block.items && block.items.length > 0 && (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm sm:text-base text-slate-100 font-medium">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm sm:text-base text-white font-medium">
                           {block.items.map((it, itIdx) => (
                             <div key={itIdx} className="flex items-start gap-2.5">
                               <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-1" />
@@ -1142,7 +1142,7 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
                       )}
 
                       {block.content && (
-                        <div className="text-sm text-slate-200 pt-1">
+                        <div className="text-sm text-white pt-1">
                           <MathView content={block.content} />
                         </div>
                       )}
@@ -1159,7 +1159,7 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
                       key={block.id || bIdx}
                       className="p-5 sm:p-6 rounded-3xl bg-amber-950/30 border-2 border-amber-500/40 shadow-xl space-y-3"
                     >
-                      <div className="flex items-center gap-2.5 font-black text-sm sm:text-base text-amber-300 uppercase">
+                      <div className="flex items-center gap-2.5 font-black text-sm sm:text-base text-white uppercase">
                         <Compass className="w-5 h-5 text-amber-400 flex-shrink-0" />
                         <span>
                           <MathView content={block.title || 'Tình Huống Mở Đầu'} inline />
@@ -1167,26 +1167,26 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
                       </div>
 
                       {(block.context || block.description) && (
-                        <div className="text-sm sm:text-base text-slate-100 font-normal leading-relaxed">
+                        <div className="text-sm sm:text-base text-white font-normal leading-relaxed">
                           <MathView content={block.context || block.description || ''} />
                         </div>
                       )}
 
                       {block.question && (
-                        <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-amber-500/30 text-xs sm:text-sm text-amber-100 flex items-start gap-2.5">
+                        <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-amber-500/30 text-xs sm:text-sm text-white flex items-start gap-2.5">
                           <QuestionIcon className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
                           <div>
-                            <span className="font-bold mr-1 text-amber-300">Câu hỏi đặt vấn đề:</span>
+                            <span className="font-bold mr-1 text-white">Câu hỏi đặt vấn đề:</span>
                             <MathView content={block.question} inline />
                           </div>
                         </div>
                       )}
 
                       {block.conclusion && (
-                        <div className="p-3.5 rounded-2xl bg-emerald-950/60 border border-emerald-500/40 text-xs sm:text-sm text-emerald-100 font-semibold flex items-start gap-2.5">
+                        <div className="p-3.5 rounded-2xl bg-emerald-950/60 border border-emerald-500/40 text-xs sm:text-sm text-white font-semibold flex items-start gap-2.5">
                           <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
                           <div>
-                            <span className="text-emerald-400 uppercase font-extrabold text-[11px] mr-1.5">
+                            <span className="text-white uppercase font-extrabold text-[11px] mr-1.5">
                               Kết luận mở đầu:
                             </span>
                             <MathView content={block.conclusion} inline />
@@ -1207,14 +1207,14 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
                       className="p-5 sm:p-6 rounded-3xl bg-slate-900/90 border-2 border-purple-500/40 shadow-xl space-y-3"
                     >
                       {block.title && (
-                        <div className="font-black text-base sm:text-lg text-purple-300 flex items-center gap-2">
+                        <div className="font-black text-base sm:text-lg text-white flex items-center gap-2">
                           <FileText className="w-4 h-4 text-purple-400" />
                           <span>
                             <MathView content={block.title} inline />
                           </span>
                         </div>
                       )}
-                      <div className="text-sm sm:text-base text-slate-100 font-normal leading-relaxed">
+                      <div className="text-sm sm:text-base text-white font-normal leading-relaxed">
                         <MathView content={block.content || ''} />
                       </div>
                     </div>
@@ -1230,7 +1230,7 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
                       key={block.id || bIdx}
                       className="p-5 sm:p-6 rounded-3xl bg-blue-950/30 border-2 border-blue-500/40 shadow-xl space-y-3.5"
                     >
-                      <div className="flex items-center gap-2.5 font-black text-base sm:text-lg text-blue-300">
+                      <div className="flex items-center gap-2.5 font-black text-base sm:text-lg text-white">
                         <Compass className="w-5 h-5 text-blue-400 flex-shrink-0" />
                         <span>
                           <MathView content={block.title || 'Hoạt Động Khám Phá'} inline />
@@ -1238,26 +1238,26 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
                       </div>
 
                       {block.description && (
-                        <div className="text-sm sm:text-base text-slate-100 font-normal leading-relaxed">
+                        <div className="text-sm sm:text-base text-white font-normal leading-relaxed">
                           <MathView content={block.description} />
                         </div>
                       )}
 
                       {block.question && (
-                        <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-blue-500/30 text-xs sm:text-sm text-blue-100 flex items-start gap-2.5">
+                        <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-blue-500/30 text-xs sm:text-sm text-white flex items-start gap-2.5">
                           <QuestionIcon className="w-4 h-4 text-blue-400 flex-shrink-0 mt-0.5" />
                           <div>
-                            <span className="font-bold mr-1 text-blue-300">Câu hỏi thảo luận:</span>
+                            <span className="font-bold mr-1 text-white">Câu hỏi thảo luận:</span>
                             <MathView content={block.question} inline />
                           </div>
                         </div>
                       )}
 
                       {block.conclusion && (
-                        <div className="p-3.5 rounded-2xl bg-emerald-950/60 border border-emerald-500/40 text-xs sm:text-sm text-emerald-100 font-semibold flex items-start gap-2.5">
+                        <div className="p-3.5 rounded-2xl bg-emerald-950/60 border border-emerald-500/40 text-xs sm:text-sm text-white font-semibold flex items-start gap-2.5">
                           <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
                           <div>
-                            <span className="text-emerald-400 uppercase font-extrabold text-[11px] mr-1.5">
+                            <span className="text-white uppercase font-extrabold text-[11px] mr-1.5">
                               Kết luận:
                             </span>
                             <MathView content={block.conclusion} inline />
@@ -1275,13 +1275,13 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
                   return (
                     <div
                       key={block.id || bIdx}
-                      className="p-6 sm:p-7 rounded-3xl bg-indigo-950/50 border-2 border-indigo-500/60 shadow-2xl text-indigo-100 space-y-3"
+                      className="p-6 sm:p-7 rounded-3xl bg-indigo-950/50 border-2 border-indigo-500/60 shadow-2xl text-white space-y-3"
                     >
-                      <div className="font-black text-xs sm:text-sm uppercase tracking-wider text-indigo-300 flex items-center gap-2">
+                      <div className="font-black text-xs sm:text-sm uppercase tracking-wider text-white flex items-center gap-2">
                         <Bookmark className="w-4 h-4 text-indigo-400" />
                         <span>{block.title || 'Ghi Nhớ Trọng Tâm (SGK)'}</span>
                       </div>
-                      <div className="text-sm sm:text-base lg:text-lg font-medium leading-relaxed">
+                      <div className="text-sm sm:text-base lg:text-lg font-medium leading-relaxed text-white">
                         <MathView content={block.content || ''} />
                       </div>
                     </div>
@@ -1295,11 +1295,11 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
                   return (
                     <div
                       key={block.id || bIdx}
-                      className="p-4 sm:p-5 rounded-3xl bg-rose-950/30 border-2 border-rose-500/40 text-rose-100 text-xs sm:text-sm flex items-start gap-3 shadow-md"
+                      className="p-4 sm:p-5 rounded-3xl bg-rose-950/30 border-2 border-rose-500/40 text-white text-xs sm:text-sm flex items-start gap-3 shadow-md"
                     >
                       <AlertTriangle className="w-5 h-5 text-rose-400 flex-shrink-0 mt-0.5" />
-                      <div className="flex-1 leading-relaxed">
-                        <span className="font-extrabold text-rose-300 mr-2 uppercase text-[11px] tracking-wide">
+                      <div className="flex-1 leading-relaxed text-white">
+                        <span className="font-extrabold text-white mr-2 uppercase text-[11px] tracking-wide">
                           {block.title || 'Chú ý'}:
                         </span>
                         <MathView content={block.content || ''} inline />
@@ -1320,10 +1320,10 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
                   return (
                     <div
                       key={block.id || bIdx}
-                      className="p-5 sm:p-7 rounded-3xl bg-slate-950 border-2 border-emerald-500/40 shadow-2xl space-y-4"
+                      className="p-5 sm:p-7 rounded-3xl bg-slate-950 border-2 border-emerald-500/40 shadow-2xl space-y-4 text-white"
                     >
                       <div className="flex items-center justify-between pb-2.5 border-b border-slate-800">
-                        <div className="font-black text-base sm:text-lg text-emerald-300 flex items-center gap-2.5">
+                        <div className="font-black text-base sm:text-lg text-white flex items-center gap-2.5">
                           <Lightbulb className="w-5 h-5 text-emerald-400" />
                           <span>
                             <MathView content={block.title || 'Ví Dụ'} inline />
@@ -1332,7 +1332,7 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
                         <button
                           onClick={() => handleResetExampleStep(stepKey)}
                           title="Thu gọn lại các bước giải"
-                          className="px-2.5 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 flex items-center gap-1"
+                          className="px-2.5 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs text-white flex items-center gap-1"
                         >
                           <RotateCcw className="w-3.5 h-3.5" />
                           Thu gọn
@@ -1340,7 +1340,7 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
                       </div>
 
                       {block.problem && (
-                        <div className="text-sm sm:text-base font-semibold text-slate-100 leading-relaxed">
+                        <div className="text-sm sm:text-base font-semibold text-white leading-relaxed">
                           <MathView content={block.problem} />
                         </div>
                       )}
@@ -1350,7 +1350,7 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
                         {solutionSteps.slice(0, curStep).map((step, sIdx) => (
                           <div
                             key={sIdx}
-                            className="p-3.5 rounded-xl bg-slate-900 border border-emerald-500/30 text-sm sm:text-base text-slate-100 font-medium"
+                            className="p-3.5 rounded-xl bg-slate-900 border border-emerald-500/30 text-sm sm:text-base text-white font-medium"
                           >
                             <MathView content={step} />
                           </div>
@@ -1372,8 +1372,8 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
 
                       {/* Final Answer */}
                       {curStep >= totalSteps && block.finalAnswer && (
-                        <div className="p-4 rounded-2xl bg-emerald-950/70 border-2 border-emerald-500/50 text-emerald-100 font-bold text-sm sm:text-base flex items-center gap-2.5 shadow">
-                          <CheckCircle2 className="w-5 h-5 text-emerald-400 flex-shrink-0" />
+                        <div className="p-4 rounded-2xl bg-emerald-950/70 border-2 border-emerald-500/50 text-white font-bold text-sm sm:text-base flex items-center gap-2.5 shadow">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
                           <MathView content={block.finalAnswer} />
                         </div>
                       )}
@@ -1388,11 +1388,11 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
                   return (
                     <div
                       key={block.id || bIdx}
-                      className="p-4 sm:p-5 rounded-3xl bg-violet-950/30 border-2 border-violet-500/40 text-violet-100 text-xs sm:text-sm flex items-start gap-3 shadow-md"
+                      className="p-4 sm:p-5 rounded-3xl bg-violet-950/30 border-2 border-violet-500/40 text-white text-xs sm:text-sm flex items-start gap-3 shadow-md"
                     >
                       <CornerDownRight className="w-5 h-5 text-violet-400 flex-shrink-0 mt-0.5" />
-                      <div className="flex-1 leading-relaxed">
-                        <span className="font-extrabold text-violet-300 mr-2 uppercase text-[11px] tracking-wide">
+                      <div className="flex-1 leading-relaxed text-white">
+                        <span className="font-extrabold text-white mr-2 uppercase text-[11px] tracking-wide">
                           {block.title || 'Chú ý từ ví dụ'}:
                         </span>
                         <MathView content={block.content || ''} inline />
@@ -1412,9 +1412,9 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
                   return (
                     <div
                       key={block.id || bIdx}
-                      className="p-5 sm:p-7 rounded-3xl bg-slate-900/90 border-2 border-sky-500/40 shadow-xl space-y-4"
+                      className="p-5 sm:p-7 rounded-3xl bg-slate-900/90 border-2 border-sky-500/40 shadow-xl space-y-4 text-white"
                     >
-                      <div className="font-black text-base sm:text-lg text-sky-300 flex items-center gap-2.5">
+                      <div className="font-black text-base sm:text-lg text-white flex items-center gap-2.5">
                         <Dumbbell className="w-5 h-5 text-sky-400" />
                         <span>
                           <MathView content={block.title || 'Luyện Tập'} inline />
@@ -1422,7 +1422,7 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
                       </div>
 
                       {block.problem && (
-                        <div className="text-sm sm:text-base text-slate-100 leading-relaxed font-normal">
+                        <div className="text-sm sm:text-base text-white leading-relaxed font-normal">
                           <MathView content={block.problem} />
                         </div>
                       )}
@@ -1432,9 +1432,9 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
                         {block.hint && (
                           <button
                             onClick={() => togglePracticeHint(key)}
-                            className="px-3 py-1.5 rounded-xl bg-amber-600/20 hover:bg-amber-600/40 border border-amber-500/40 text-amber-300 text-xs font-bold transition-all flex items-center gap-1.5"
+                            className="px-3 py-1.5 rounded-xl bg-amber-600/20 hover:bg-amber-600/40 border border-amber-500/40 text-white text-xs font-bold transition-all flex items-center gap-1.5"
                           >
-                            <Sparkles className="w-3.5 h-3.5" />
+                            <Sparkles className="w-3.5 h-3.5 text-amber-300" />
                             <span>{showHint ? 'Ẩn Gợi Ý' : 'Hiện Gợi Ý'}</span>
                           </button>
                         )}
@@ -1442,24 +1442,24 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
                         {block.solution && (
                           <button
                             onClick={() => togglePracticeSolution(key)}
-                            className="px-3 py-1.5 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/40 border border-emerald-500/40 text-emerald-300 text-xs font-bold transition-all flex items-center gap-1.5"
+                            className="px-3 py-1.5 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/40 border border-emerald-500/40 text-white text-xs font-bold transition-all flex items-center gap-1.5"
                           >
-                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-300" />
                             <span>{showSol ? 'Ẩn Lời Giải' : 'Hiện Lời Giải'}</span>
                           </button>
                         )}
                       </div>
 
                       {showHint && block.hint && (
-                        <div className="p-3.5 rounded-2xl bg-amber-950/50 border border-amber-500/40 text-xs sm:text-sm text-amber-100">
-                          <span className="font-bold text-amber-300 mr-1.5">Gợi ý:</span>
+                        <div className="p-3.5 rounded-2xl bg-amber-950/50 border border-amber-500/40 text-xs sm:text-sm text-white">
+                          <span className="font-bold text-white mr-1.5">Gợi ý:</span>
                           <MathView content={block.hint} inline />
                         </div>
                       )}
 
                       {showSol && block.solution && (
-                        <div className="p-4 rounded-2xl bg-emerald-950/60 border border-emerald-500/40 text-sm sm:text-base text-emerald-100 font-medium">
-                          <span className="font-bold text-emerald-300 block mb-1">Lời giải chi tiết:</span>
+                        <div className="p-4 rounded-2xl bg-emerald-950/60 border border-emerald-500/40 text-sm sm:text-base text-white font-medium">
+                          <span className="font-bold text-white block mb-1">Lời giải chi tiết:</span>
                           <MathView content={block.solution} />
                         </div>
                       )}
@@ -1477,9 +1477,9 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
                   return (
                     <div
                       key={block.id || bIdx}
-                      className="p-5 sm:p-7 rounded-3xl bg-slate-900/90 border-2 border-teal-500/40 shadow-xl space-y-4"
+                      className="p-5 sm:p-7 rounded-3xl bg-slate-900/90 border-2 border-teal-500/40 shadow-xl space-y-4 text-white"
                     >
-                      <div className="font-black text-base sm:text-lg text-teal-300 flex items-center gap-2.5">
+                      <div className="font-black text-base sm:text-lg text-white flex items-center gap-2.5">
                         <Globe2 className="w-5 h-5 text-teal-400" />
                         <span>
                           <MathView content={block.title || 'Vận Dụng Thực Tế'} inline />
@@ -1487,7 +1487,7 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
                       </div>
 
                       {block.problem && (
-                        <div className="text-sm sm:text-base text-slate-100 leading-relaxed font-normal">
+                        <div className="text-sm sm:text-base text-white leading-relaxed font-normal">
                           <MathView content={block.problem} />
                         </div>
                       )}
@@ -1496,18 +1496,18 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
                         <div className="pt-2">
                           <button
                             onClick={() => toggleAppSolution(key)}
-                            className="px-3 py-1.5 rounded-xl bg-teal-600/20 hover:bg-teal-600/40 border border-teal-500/40 text-teal-300 text-xs font-bold transition-all flex items-center gap-1.5"
+                            className="px-3 py-1.5 rounded-xl bg-teal-600/20 hover:bg-teal-600/40 border border-teal-500/40 text-white text-xs font-bold transition-all flex items-center gap-1.5"
                           >
-                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <CheckCircle2 className="w-3.5 h-3.5 text-teal-300" />
                             <span>{showSol ? 'Ẩn Hướng Dẫn' : 'Xem Hướng Dẫn'}</span>
                           </button>
+                        </div>
+                      )}
 
-                          {showSol && (
-                            <div className="mt-3 p-4 rounded-2xl bg-teal-950/60 border border-teal-500/40 text-sm sm:text-base text-teal-100 font-medium">
-                              <span className="font-bold text-teal-300 block mb-1">Hướng dẫn giải:</span>
-                              <MathView content={block.solution} />
-                            </div>
-                          )}
+                      {showSol && block.solution && (
+                        <div className="mt-3 p-4 rounded-2xl bg-teal-950/60 border border-teal-500/40 text-sm sm:text-base text-white font-medium">
+                          <span className="font-bold text-white block mb-1">Hướng dẫn giải:</span>
+                          <MathView content={block.solution} />
                         </div>
                       )}
                     </div>

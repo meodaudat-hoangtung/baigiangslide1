@@ -388,8 +388,8 @@ export const SlideViewer: React.FC<SlideViewerProps> = ({
       : 'text-base';
 
   const titleColor = styleConfig.titleColor || '#ffffff';
-  const subtitleColor = styleConfig.subtitleColor || '#94a3b8';
-  const textColor = styleConfig.textColor || '#e2e8f0';
+  const subtitleColor = styleConfig.subtitleColor || '#ffffff';
+  const textColor = styleConfig.textColor || '#ffffff';
 
   // Group images by position
   const images = currentSlide?.images || [];
@@ -401,7 +401,7 @@ export const SlideViewer: React.FC<SlideViewerProps> = ({
   return (
     <div
       ref={containerRef}
-      className={`flex flex-col bg-slate-950 text-slate-100 ${
+      className={`flex flex-col bg-slate-950 text-white slide-presentation-area ${
         isFullscreen ? 'fixed inset-0 z-50 p-6' : 'min-h-[78vh] p-4 lg:p-6'
       }`}
     >
@@ -701,19 +701,19 @@ export const SlideViewer: React.FC<SlideViewerProps> = ({
         />
 
         {/* Slide Content */}
-        <div className={`relative z-10 flex-1 flex flex-col p-6 sm:p-8 lg:p-10 max-w-6xl mx-auto w-full ${fontClass} ${sizeClass}`}>
+        <div className={`relative z-10 flex-1 flex flex-col p-6 sm:p-8 lg:p-10 max-w-6xl mx-auto w-full slide-presentation-content text-white ${fontClass} ${sizeClass}`}>
           {/* Slide Header with quick edit shortcut */}
           <div className="mb-6 border-b border-slate-800 pb-4 flex items-start justify-between gap-4">
             <div>
               <h1
-                className="text-2xl sm:text-3xl lg:text-4xl font-extrabold tracking-tight"
+                className="text-2xl sm:text-3xl lg:text-4xl font-extrabold tracking-tight text-white"
                 style={{ color: titleColor }}
               >
                 <MathView content={currentSlide.title} inline />
               </h1>
               {currentSlide.subtitle && (
                 <div
-                  className="text-sm sm:text-base mt-1 font-medium"
+                  className="text-sm sm:text-base mt-1 font-medium text-white"
                   style={{ color: subtitleColor }}
                 >
                   <MathView content={currentSlide.subtitle} />
@@ -763,7 +763,7 @@ export const SlideViewer: React.FC<SlideViewerProps> = ({
                     className="w-full h-auto max-h-72 object-contain rounded-xl cursor-zoom-in group-hover:opacity-95 transition-opacity"
                   />
                   {img.caption && (
-                    <div className="mt-2 text-center text-xs text-slate-300 font-medium">
+                    <div className="mt-2 text-center text-xs text-white font-medium">
                       <MathView content={img.caption} inline />
                     </div>
                   )}
@@ -791,12 +791,12 @@ export const SlideViewer: React.FC<SlideViewerProps> = ({
 
           {/* Objectives (Mục Tiêu Bài Học) if configured on slide */}
           {currentSlide.objectives && currentSlide.objectives.length > 0 && (
-            <div className="mb-6 p-4 sm:p-5 rounded-2xl bg-indigo-950/40 border-2 border-indigo-500/30 space-y-2.5 shadow-lg">
-              <span className="text-xs sm:text-sm font-extrabold uppercase tracking-wider text-indigo-300 flex items-center gap-2">
+            <div className="mb-6 p-4 sm:p-5 rounded-2xl bg-indigo-950/40 border-2 border-indigo-500/30 space-y-2.5 shadow-lg text-white">
+              <span className="text-xs sm:text-sm font-extrabold uppercase tracking-wider text-white flex items-center gap-2">
                 <Target className="w-4 h-4 text-emerald-400" />
                 Mục Tiêu Bài Học:
               </span>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 text-sm sm:text-base text-slate-100 font-medium">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 text-sm sm:text-base text-white font-medium">
                 {currentSlide.objectives.map((obj, idx) => (
                   <div key={idx} className="flex items-start gap-2.5">
                     <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-1" />
@@ -811,33 +811,33 @@ export const SlideViewer: React.FC<SlideViewerProps> = ({
 
           {/* Opening Problem (Bài Toán / Tình Huống Mở Đầu) if configured on slide */}
           {currentSlide.openingProblem && currentSlide.openingProblem.context && (
-            <div className="mb-6 p-5 sm:p-6 rounded-2xl bg-amber-950/30 border-2 border-amber-500/40 shadow-xl space-y-3">
-              <div className="flex items-center gap-2.5 font-black text-sm sm:text-base text-amber-300 uppercase">
+            <div className="mb-6 p-5 sm:p-6 rounded-2xl bg-amber-950/30 border-2 border-amber-500/40 shadow-xl space-y-3 text-white">
+              <div className="flex items-center gap-2.5 font-black text-sm sm:text-base text-white uppercase">
                 <Compass className="w-5 h-5 text-amber-400 flex-shrink-0" />
                 <span>
                   {currentSlide.openingProblem.title || 'Tình Huống Mở Đầu'}
                 </span>
               </div>
 
-              <div className="text-sm sm:text-base text-slate-100 font-normal leading-relaxed">
+              <div className="text-sm sm:text-base text-white font-normal leading-relaxed">
                 <MathView content={currentSlide.openingProblem.context} />
               </div>
 
               {currentSlide.openingProblem.question && (
-                <div className="p-3 rounded-xl bg-slate-950/80 border border-amber-500/30 text-xs sm:text-sm text-amber-100 flex items-start gap-2.5">
+                <div className="p-3 rounded-xl bg-slate-950/80 border border-amber-500/30 text-xs sm:text-sm text-white flex items-start gap-2.5">
                   <QuestionIcon className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
                   <div>
-                    <span className="font-bold mr-1 text-amber-300">Câu hỏi đặt vấn đề:</span>
+                    <span className="font-bold mr-1 text-white">Câu hỏi đặt vấn đề:</span>
                     <MathView content={currentSlide.openingProblem.question} inline />
                   </div>
                 </div>
               )}
 
               {currentSlide.openingProblem.conclusion && (
-                <div className="p-3 rounded-xl bg-emerald-950/60 border border-emerald-500/40 text-xs sm:text-sm text-emerald-100 font-semibold flex items-start gap-2.5">
+                <div className="p-3 rounded-xl bg-emerald-950/60 border border-emerald-500/40 text-xs sm:text-sm text-white font-semibold flex items-start gap-2.5">
                   <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
                   <div>
-                    <span className="text-emerald-400 uppercase font-extrabold text-[11px] mr-1.5">
+                    <span className="text-white uppercase font-extrabold text-[11px] mr-1.5">
                       Kết luận mở đầu:
                     </span>
                     <MathView content={currentSlide.openingProblem.conclusion} inline />
@@ -882,7 +882,7 @@ export const SlideViewer: React.FC<SlideViewerProps> = ({
                       className="w-full h-auto max-h-64 object-contain rounded-xl cursor-zoom-in"
                     />
                     {img.caption && (
-                      <div className="mt-2 text-center text-xs text-slate-300 font-medium">
+                      <div className="mt-2 text-center text-xs text-white font-medium">
                         <MathView content={img.caption} inline />
                       </div>
                     )}
@@ -965,7 +965,7 @@ export const SlideViewer: React.FC<SlideViewerProps> = ({
                                 />
                               )}
                               {block.imageCaption && (
-                                <div className="mt-2 text-center text-xs text-slate-300 font-medium">
+                                <div className="mt-2 text-center text-xs text-white font-medium">
                                   <MathView content={block.imageCaption} inline />
                                 </div>
                               )}
@@ -989,13 +989,13 @@ export const SlideViewer: React.FC<SlideViewerProps> = ({
                         return (
                           <div
                             key={block.id || bIdx}
-                            className="p-5 rounded-2xl bg-blue-950/40 border-2 border-blue-500/40 shadow-xl space-y-3"
+                            className="p-5 rounded-2xl bg-blue-950/40 border-2 border-blue-500/40 shadow-xl space-y-3 text-white"
                           >
-                            <div className="text-xl sm:text-2xl font-black text-blue-300 uppercase">
+                            <div className="text-xl sm:text-2xl font-black text-white uppercase">
                               <MathView content={block.title || 'Tiêu Đề Bài Học'} inline />
                             </div>
                             {block.subtitle && (
-                              <div className="text-sm sm:text-base text-blue-200 font-medium">
+                              <div className="text-sm sm:text-base text-white font-medium">
                                 <MathView content={block.subtitle} />
                               </div>
                             )}
@@ -1005,7 +1005,7 @@ export const SlideViewer: React.FC<SlideViewerProps> = ({
                               </div>
                             )}
                             {block.content && (
-                              <div className="text-sm text-slate-200">
+                              <div className="text-sm text-white">
                                 <MathView content={block.content} />
                               </div>
                             )}
@@ -1018,9 +1018,9 @@ export const SlideViewer: React.FC<SlideViewerProps> = ({
                         return (
                           <div
                             key={block.id || bIdx}
-                            className="p-5 rounded-2xl bg-indigo-950/40 border-2 border-indigo-500/40 shadow-xl space-y-3"
+                            className="p-5 rounded-2xl bg-indigo-950/40 border-2 border-indigo-500/40 shadow-xl space-y-3 text-white"
                           >
-                            <div className="flex items-center gap-2 text-sm sm:text-base font-extrabold uppercase text-indigo-300">
+                            <div className="flex items-center gap-2 text-sm sm:text-base font-extrabold uppercase text-white">
                               <Target className="w-5 h-5 text-emerald-400" />
                               <span>
                                 <MathView content={block.title || 'Mục Tiêu Bài Học'} inline />
@@ -1028,7 +1028,7 @@ export const SlideViewer: React.FC<SlideViewerProps> = ({
                             </div>
 
                             {block.items && block.items.length > 0 && (
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 text-sm sm:text-base text-slate-100 font-medium">
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 text-sm sm:text-base text-white font-medium">
                                 {block.items.map((it, itIdx) => (
                                   <div key={itIdx} className="flex items-start gap-2.5">
                                     <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-1" />
@@ -1041,7 +1041,7 @@ export const SlideViewer: React.FC<SlideViewerProps> = ({
                             )}
 
                             {block.content && (
-                              <div className="text-sm text-slate-200 pt-1">
+                              <div className="text-sm text-white pt-1">
                                 <MathView content={block.content} />
                               </div>
                             )}
@@ -1054,9 +1054,9 @@ export const SlideViewer: React.FC<SlideViewerProps> = ({
                         return (
                           <div
                             key={block.id || bIdx}
-                            className="p-5 rounded-2xl bg-amber-950/30 border-2 border-amber-500/40 shadow-xl space-y-3"
+                            className="p-5 rounded-2xl bg-amber-950/30 border-2 border-amber-500/40 shadow-xl space-y-3 text-white"
                           >
-                            <div className="flex items-center gap-2.5 font-black text-sm sm:text-base text-amber-300 uppercase">
+                            <div className="flex items-center gap-2.5 font-black text-sm sm:text-base text-white uppercase">
                               <Compass className="w-5 h-5 text-amber-400 flex-shrink-0" />
                               <span>
                                 <MathView content={block.title || 'Tình Huống Mở Đầu'} inline />
@@ -1064,26 +1064,26 @@ export const SlideViewer: React.FC<SlideViewerProps> = ({
                             </div>
 
                             {(block.context || block.description) && (
-                              <div className="text-sm sm:text-base text-slate-100 font-normal leading-relaxed">
+                              <div className="text-sm sm:text-base text-white font-normal leading-relaxed">
                                 <MathView content={block.context || block.description || ''} />
                               </div>
                             )}
 
                             {block.question && (
-                              <div className="p-3 rounded-xl bg-slate-950/80 border border-amber-500/30 text-xs sm:text-sm text-amber-100 flex items-start gap-2.5">
+                              <div className="p-3 rounded-xl bg-slate-950/80 border border-amber-500/30 text-xs sm:text-sm text-white flex items-start gap-2.5">
                                 <QuestionIcon className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
                                 <div>
-                                  <span className="font-bold mr-1 text-amber-300">Câu hỏi đặt vấn đề:</span>
+                                  <span className="font-bold mr-1 text-white">Câu hỏi đặt vấn đề:</span>
                                   <MathView content={block.question} inline />
                                 </div>
                               </div>
                             )}
 
                             {block.conclusion && (
-                              <div className="p-3 rounded-xl bg-emerald-950/60 border border-emerald-500/40 text-xs sm:text-sm text-emerald-100 font-semibold flex items-start gap-2.5">
+                              <div className="p-3 rounded-xl bg-emerald-950/60 border border-emerald-500/40 text-xs sm:text-sm text-white font-semibold flex items-start gap-2.5">
                                 <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
                                 <div>
-                                  <span className="text-emerald-400 uppercase font-extrabold text-[11px] mr-1.5">
+                                  <span className="text-white uppercase font-extrabold text-[11px] mr-1.5">
                                     Kết luận mở đầu:
                                   </span>
                                   <MathView content={block.conclusion} inline />
@@ -1099,17 +1099,17 @@ export const SlideViewer: React.FC<SlideViewerProps> = ({
                         return (
                           <div
                             key={block.id || bIdx}
-                            className="p-5 rounded-2xl bg-slate-950/80 border-2 border-purple-500/40 shadow-xl space-y-2.5"
+                            className="p-5 rounded-2xl bg-slate-950/80 border-2 border-purple-500/40 shadow-xl space-y-2.5 text-white"
                           >
                             {block.title && (
-                              <div className="font-extrabold text-sm sm:text-base text-purple-300 flex items-center gap-2">
+                              <div className="font-extrabold text-sm sm:text-base text-white flex items-center gap-2">
                                 <FileText className="w-4 h-4 text-purple-400" />
                                 <span>
                                   <MathView content={block.title} inline />
                                 </span>
                               </div>
                             )}
-                            <div className="text-sm sm:text-base text-slate-100 font-normal leading-relaxed">
+                            <div className="text-sm sm:text-base text-white font-normal leading-relaxed">
                               <MathView content={block.content || ''} />
                             </div>
                           </div>
@@ -1121,9 +1121,9 @@ export const SlideViewer: React.FC<SlideViewerProps> = ({
                         return (
                           <div
                             key={block.id || bIdx}
-                            className="p-5 rounded-2xl bg-blue-950/30 border-2 border-blue-500/40 shadow-lg space-y-3"
+                            className="p-5 rounded-2xl bg-blue-950/30 border-2 border-blue-500/40 shadow-lg space-y-3 text-white"
                           >
-                            <div className="flex items-center gap-2.5 font-extrabold text-sm sm:text-base text-blue-300">
+                            <div className="flex items-center gap-2.5 font-extrabold text-sm sm:text-base text-white">
                               <Compass className="w-5 h-5 text-blue-400 flex-shrink-0" />
                               <span>
                                 <MathView content={block.title || 'Hoạt động'} inline />
@@ -1131,26 +1131,26 @@ export const SlideViewer: React.FC<SlideViewerProps> = ({
                             </div>
 
                             {block.description && (
-                              <div className="text-sm sm:text-base text-slate-100 font-normal">
+                              <div className="text-sm sm:text-base text-white font-normal">
                                 <MathView content={block.description} />
                               </div>
                             )}
 
                             {block.question && (
-                              <div className="p-3 rounded-xl bg-slate-950/80 border border-blue-500/30 text-xs sm:text-sm text-blue-100 flex items-start gap-2.5">
+                              <div className="p-3 rounded-xl bg-slate-950/80 border border-blue-500/30 text-xs sm:text-sm text-white flex items-start gap-2.5">
                                 <QuestionIcon className="w-4 h-4 text-blue-400 flex-shrink-0 mt-0.5" />
                                 <div>
-                                  <span className="font-bold mr-1 text-blue-300">Câu hỏi thảo luận:</span>
+                                  <span className="font-bold mr-1 text-white">Câu hỏi thảo luận:</span>
                                   <MathView content={block.question} inline />
                                 </div>
                               </div>
                             )}
 
                             {block.conclusion && (
-                              <div className="p-3 rounded-xl bg-emerald-950/60 border border-emerald-500/40 text-xs sm:text-sm text-emerald-100 font-semibold flex items-start gap-2.5">
+                              <div className="p-3 rounded-xl bg-emerald-950/60 border border-emerald-500/40 text-xs sm:text-sm text-white font-semibold flex items-start gap-2.5">
                                 <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
                                 <div>
-                                  <span className="text-emerald-400 uppercase font-extrabold text-[11px] mr-1.5">
+                                  <span className="text-white uppercase font-extrabold text-[11px] mr-1.5">
                                     Kết luận:
                                   </span>
                                   <MathView content={block.conclusion} inline />
@@ -1166,13 +1166,13 @@ export const SlideViewer: React.FC<SlideViewerProps> = ({
                         return (
                           <div
                             key={block.id || bIdx}
-                            className="p-5 sm:p-6 rounded-2xl bg-indigo-950/40 border-2 border-indigo-500/50 shadow-xl text-indigo-100 space-y-2.5"
+                            className="p-5 sm:p-6 rounded-2xl bg-indigo-950/40 border-2 border-indigo-500/50 shadow-xl text-white space-y-2.5"
                           >
-                            <div className="font-extrabold text-xs sm:text-sm uppercase tracking-wider text-indigo-300 flex items-center gap-2">
+                            <div className="font-extrabold text-xs sm:text-sm uppercase tracking-wider text-white flex items-center gap-2">
                               <Bookmark className="w-4 h-4 text-indigo-400" />
                               <span>{block.title || 'Ghi Nhớ Trọng Tâm (SGK)'}</span>
                             </div>
-                            <div className="text-sm sm:text-base font-medium leading-relaxed">
+                            <div className="text-sm sm:text-base font-medium leading-relaxed text-white">
                               <MathView content={block.content || ''} />
                             </div>
                           </div>
@@ -1184,13 +1184,13 @@ export const SlideViewer: React.FC<SlideViewerProps> = ({
                         return (
                           <div
                             key={block.id || bIdx}
-                            className="p-4 sm:p-5 rounded-2xl bg-amber-950/30 border-2 border-amber-500/40 shadow-lg text-amber-100 space-y-2"
+                            className="p-4 sm:p-5 rounded-2xl bg-amber-950/30 border-2 border-amber-500/40 shadow-lg text-white space-y-2"
                           >
-                            <div className="font-bold text-xs sm:text-sm uppercase tracking-wider text-amber-300 flex items-center gap-2">
+                            <div className="font-bold text-xs sm:text-sm uppercase tracking-wider text-white flex items-center gap-2">
                               <AlertTriangle className="w-4 h-4 text-amber-400" />
                               <span>{block.title || 'Chú Ý Quan Trọng'}</span>
                             </div>
-                            <div className="text-sm sm:text-base leading-relaxed">
+                            <div className="text-sm sm:text-base leading-relaxed text-white">
                               <MathView content={block.content || ''} />
                             </div>
                           </div>
@@ -1202,10 +1202,10 @@ export const SlideViewer: React.FC<SlideViewerProps> = ({
                         return (
                           <div
                             key={block.id || bIdx}
-                            className="p-5 rounded-2xl bg-slate-900/90 border-2 border-purple-500/40 shadow-xl space-y-4"
+                            className="p-5 rounded-2xl bg-slate-900/90 border-2 border-purple-500/40 shadow-xl space-y-4 text-white"
                           >
                             <div className="flex items-center justify-between pb-2.5 border-b border-purple-500/30">
-                              <div className="font-bold text-base text-purple-300 flex items-center gap-2">
+                              <div className="font-bold text-base text-white flex items-center gap-2">
                                 <Sparkles className="w-4 h-4 text-purple-400" />
                                 <span>
                                   <MathView content={block.title || 'Ví Dụ'} inline />
@@ -1214,26 +1214,26 @@ export const SlideViewer: React.FC<SlideViewerProps> = ({
                             </div>
 
                             {block.problem && (
-                              <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-700/80 text-sm sm:text-base font-medium text-amber-200">
+                              <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-700/80 text-sm sm:text-base font-medium text-white">
                                 <MathView content={block.problem} />
                               </div>
                             )}
 
                             {block.solutionSteps && block.solutionSteps.length > 0 && (
                               <div className="space-y-2.5">
-                                <div className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                                <div className="text-xs font-bold uppercase tracking-wider text-white">
                                   Hướng Dẫn & Lời Giải Chi Tiết:
                                 </div>
                                 {block.solutionSteps.map((step, stepIdx) => (
                                   <div
                                     key={stepIdx}
-                                    className="p-3 rounded-xl bg-slate-950/90 border border-slate-700 text-slate-200 text-sm sm:text-base shadow"
+                                    className="p-3 rounded-xl bg-slate-950/90 border border-slate-700 text-white text-sm sm:text-base shadow"
                                   >
                                     <div className="flex items-start gap-2.5">
-                                      <span className="font-mono font-bold text-xs bg-purple-500/20 text-purple-300 px-2 py-0.5 rounded border border-purple-500/30 shrink-0">
+                                      <span className="font-mono font-bold text-xs bg-slate-800 text-white px-2 py-0.5 rounded border border-slate-700 shrink-0">
                                         Bước {stepIdx + 1}
                                       </span>
-                                      <div className="flex-1">
+                                      <div className="flex-1 text-white">
                                         <MathView content={step} />
                                       </div>
                                     </div>
@@ -1243,8 +1243,8 @@ export const SlideViewer: React.FC<SlideViewerProps> = ({
                             )}
 
                             {block.finalAnswer && (
-                              <div className="p-3.5 rounded-xl bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 font-bold text-sm sm:text-base">
-                                <span className="text-emerald-400 text-xs uppercase font-extrabold mr-2">
+                              <div className="p-3.5 rounded-xl bg-emerald-950/60 border border-emerald-500/40 text-white font-bold text-sm sm:text-base">
+                                <span className="text-white text-xs uppercase font-extrabold mr-2">
                                   Đáp số:
                                 </span>
                                 <MathView content={block.finalAnswer} inline />
@@ -1259,13 +1259,13 @@ export const SlideViewer: React.FC<SlideViewerProps> = ({
                         return (
                           <div
                             key={block.id || bIdx}
-                            className="p-4 sm:p-5 rounded-2xl bg-rose-950/30 border-2 border-rose-500/40 shadow-lg text-rose-100 space-y-2"
+                            className="p-4 sm:p-5 rounded-2xl bg-rose-950/30 border-2 border-rose-500/40 shadow-lg text-white space-y-2"
                           >
-                            <div className="font-bold text-xs sm:text-sm uppercase tracking-wider text-rose-300 flex items-center gap-2">
+                            <div className="font-bold text-xs sm:text-sm uppercase tracking-wider text-white flex items-center gap-2">
                               <AlertTriangle className="w-4 h-4 text-rose-400" />
                               <span>{block.title || 'Chú Ý / Nhận Xét Từ Ví Dụ'}</span>
                             </div>
-                            <div className="text-sm sm:text-base leading-relaxed">
+                            <div className="text-sm sm:text-base leading-relaxed text-white">
                               <MathView content={block.content || ''} />
                             </div>
                           </div>
@@ -1282,10 +1282,10 @@ export const SlideViewer: React.FC<SlideViewerProps> = ({
                         return (
                           <div
                             key={block.id || bIdx}
-                            className="p-5 rounded-2xl bg-sky-950/25 border-2 border-sky-500/40 shadow-lg space-y-3.5 text-sm sm:text-base"
+                            className="p-5 rounded-2xl bg-sky-950/25 border-2 border-sky-500/40 shadow-lg space-y-3.5 text-sm sm:text-base text-white"
                           >
                             <div className="flex items-center justify-between pb-2 border-b border-sky-500/20">
-                              <div className="font-extrabold text-sky-300 flex items-center gap-2.5">
+                              <div className="font-extrabold text-white flex items-center gap-2.5">
                                 <Dumbbell className="w-5 h-5 text-sky-400" />
                                 <span>
                                   <MathView content={block.title || 'Luyện tập'} inline />
@@ -1299,7 +1299,7 @@ export const SlideViewer: React.FC<SlideViewerProps> = ({
                                     className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
                                       showHint
                                         ? 'bg-amber-600 text-white border-amber-400'
-                                        : 'bg-slate-900 text-amber-300 border-amber-500/40 hover:bg-slate-800'
+                                        : 'bg-slate-900 text-white border-amber-500/40 hover:bg-slate-800'
                                     }`}
                                   >
                                     {showHint ? 'Ẩn Gợi Ý' : 'Xem Gợi Ý'}
@@ -1312,7 +1312,7 @@ export const SlideViewer: React.FC<SlideViewerProps> = ({
                                     className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
                                       showSol
                                         ? 'bg-sky-600 text-white border-sky-400'
-                                        : 'bg-slate-900 text-sky-300 border-sky-500/40 hover:bg-slate-800'
+                                        : 'bg-slate-900 text-white border-sky-500/40 hover:bg-slate-800'
                                     }`}
                                   >
                                     {showSol ? 'Ẩn Lời Giải' : 'Xem Đáp Án'}
@@ -1322,24 +1322,24 @@ export const SlideViewer: React.FC<SlideViewerProps> = ({
                             </div>
 
                             {block.problem && (
-                              <div className="text-slate-100 font-medium leading-relaxed">
+                              <div className="text-white font-medium leading-relaxed">
                                 <MathView content={block.problem} />
                               </div>
                             )}
 
                             {showHint && block.hint && (
-                              <div className="p-3 rounded-xl bg-amber-950/50 border border-amber-500/40 text-amber-100 text-xs sm:text-sm flex items-start gap-2.5">
+                              <div className="p-3 rounded-xl bg-amber-950/50 border border-amber-500/40 text-white text-xs sm:text-sm flex items-start gap-2.5">
                                 <Sparkles className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
                                 <div>
-                                  <span className="font-bold mr-1 text-amber-300">Gợi ý:</span>
+                                  <span className="font-bold mr-1 text-white">Gợi ý:</span>
                                   <MathView content={block.hint} inline />
                                 </div>
                               </div>
                             )}
 
                             {showSol && block.solution && (
-                              <div className="p-4 rounded-xl bg-slate-900 border-2 border-sky-500/50 text-sky-100 text-sm sm:text-base">
-                                <div className="font-extrabold mb-1.5 text-sky-300">Lời giải chi tiết:</div>
+                              <div className="p-4 rounded-xl bg-slate-900 border-2 border-sky-500/50 text-white text-sm sm:text-base">
+                                <div className="font-extrabold mb-1.5 text-white">Lời giải chi tiết:</div>
                                 <MathView content={block.solution} />
                               </div>
                             )}
@@ -1355,10 +1355,10 @@ export const SlideViewer: React.FC<SlideViewerProps> = ({
                         return (
                           <div
                             key={block.id || bIdx}
-                            className="p-5 rounded-2xl bg-teal-950/25 border-2 border-teal-500/40 shadow-lg space-y-3.5 text-sm sm:text-base"
+                            className="p-5 rounded-2xl bg-teal-950/25 border-2 border-teal-500/40 shadow-lg space-y-3.5 text-sm sm:text-base text-white"
                           >
                             <div className="flex items-center justify-between pb-2 border-b border-teal-500/20">
-                              <div className="font-extrabold text-teal-300 flex items-center gap-2.5">
+                              <div className="font-extrabold text-white flex items-center gap-2.5">
                                 <Globe2 className="w-5 h-5 text-teal-400" />
                                 <span>
                                   <MathView content={block.title || 'Vận dụng'} inline />
@@ -1371,7 +1371,7 @@ export const SlideViewer: React.FC<SlideViewerProps> = ({
                                   className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
                                     showSol
                                       ? 'bg-teal-600 text-white border-teal-400'
-                                      : 'bg-slate-900 text-teal-300 border-teal-500/40 hover:bg-slate-800'
+                                      : 'bg-slate-900 text-white border-teal-500/40 hover:bg-slate-800'
                                   }`}
                                 >
                                   {showSol ? 'Ẩn Lời Giải' : 'Xem Đáp Án'}
@@ -1380,14 +1380,14 @@ export const SlideViewer: React.FC<SlideViewerProps> = ({
                             </div>
 
                             {block.problem && (
-                              <div className="text-slate-100 font-medium leading-relaxed">
+                              <div className="text-white font-medium leading-relaxed">
                                 <MathView content={block.problem} />
                               </div>
                             )}
 
                             {showSol && block.solution && (
-                              <div className="p-4 rounded-xl bg-slate-900 border-2 border-teal-500/50 text-teal-100 text-sm sm:text-base">
-                                <div className="font-extrabold mb-1.5 text-teal-300">Lời giải ứng dụng thực tế:</div>
+                              <div className="p-4 rounded-xl bg-slate-900 border-2 border-teal-500/50 text-white text-sm sm:text-base">
+                                <div className="font-extrabold mb-1.5 text-white">Lời giải ứng dụng thực tế:</div>
                                 <MathView content={block.solution} />
                               </div>
                             )}
@@ -1417,7 +1417,7 @@ export const SlideViewer: React.FC<SlideViewerProps> = ({
                         className="w-full h-auto max-h-72 object-contain rounded-xl cursor-zoom-in"
                       />
                       {img.caption && (
-                        <div className="mt-2 text-center text-xs text-slate-300 font-medium">
+                        <div className="mt-2 text-center text-xs text-white font-medium">
                           <MathView content={img.caption} inline />
                         </div>
                       )}
@@ -1458,7 +1458,7 @@ export const SlideViewer: React.FC<SlideViewerProps> = ({
                       className="w-full h-auto max-h-64 object-contain rounded-xl cursor-zoom-in"
                     />
                     {img.caption && (
-                      <div className="mt-2 text-center text-xs text-slate-300 font-medium">
+                      <div className="mt-2 text-center text-xs text-white font-medium">
                         <MathView content={img.caption} inline />
                       </div>
                     )}

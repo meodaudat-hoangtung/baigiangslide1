@@ -39,7 +39,7 @@ export const MediaBlockRenderer: React.FC<MediaBlockRendererProps> = ({
       >
         {/* Title of media block if present */}
         {block.title && block.title !== 'Video / Âm thanh bài giảng' && (
-          <div className="mb-2 text-xs sm:text-sm font-bold text-rose-300 flex items-center gap-1.5">
+          <div className="mb-2 text-xs sm:text-sm font-bold text-white flex items-center gap-1.5">
             {parsed.isAudio ? (
               <Music className="w-4 h-4 text-rose-400" />
             ) : (
@@ -125,7 +125,7 @@ export const MediaBlockRenderer: React.FC<MediaBlockRendererProps> = ({
 
         {/* Media Caption (Supports LaTeX Math $...$) */}
         {block.mediaCaption && (
-          <div className="mt-2.5 text-center text-xs sm:text-sm text-slate-300 font-medium px-2 py-1">
+          <div className="mt-2.5 text-center text-xs sm:text-sm text-white font-medium px-2 py-1">
             <MathView content={block.mediaCaption} inline />
           </div>
         )}
