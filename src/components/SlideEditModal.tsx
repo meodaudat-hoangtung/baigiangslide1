@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { Slide, SlideSection, SlideImage, SlideStyleConfig } from '../types';
 import { MathView } from './MathView';
+import { SlideSelectionFontSizeToolbar } from './SlideSelectionFontSizeToolbar';
 
 interface SlideEditModalProps {
   isOpen: boolean;
@@ -1296,6 +1297,9 @@ export const SlideEditModal: React.FC<SlideEditModalProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Floating Font Size Toolbar for selected text (20pt, 24pt, 28pt, 32pt, 34pt) */}
+      <SlideSelectionFontSizeToolbar activeSlide={slide} />
     </div>
   );
 };

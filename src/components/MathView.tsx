@@ -114,6 +114,18 @@ export const MathView: React.FC<MathViewProps> = ({
     text = text.replace(/\*\*(.*?)\*\*/g, '<strong class="font-bold text-indigo-200">$1</strong>');
     text = text.replace(/\*([^\*]+)\*/g, '<em class="italic text-slate-300">$1</em>');
 
+    // Support custom font size tags: [size=20pt]...[/size], [size=24pt]...[/size], [size=28pt]...[/size], [size=32pt]...[/size], [size=34pt]...[/size]
+    let prevText = '';
+    let loopCount = 0;
+    while (prevText !== text && loopCount < 3) {
+      prevText = text;
+      loopCount++;
+      text = text.replace(/\[size=([0-9]+(?:pt|px)?)\]([\s\S]*?)\[\/size\]/gi, (_match, size, inner) => {
+        const sizeStr = size.toLowerCase().endsWith('pt') || size.toLowerCase().endsWith('px') ? size : `${size}pt`;
+        return `<span class="slide-custom-fontsize inline" style="font-size: ${sizeStr}; line-height: 1.35;">${inner}</span>`;
+      });
+    }
+
     // Replace newlines with linebreaks
     let formatted = text.replace(/\n/g, '<br/>');
 

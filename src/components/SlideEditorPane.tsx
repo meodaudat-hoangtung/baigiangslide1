@@ -62,6 +62,7 @@ import { BLOCK_ANIMATION_PRESETS } from '../utils/slideTransitions';
 import { MathView } from './MathView';
 import { MathToolbar } from './MathToolbar';
 import { MediaBlockRenderer } from './MediaBlockRenderer';
+import { SlideSelectionFontSizeToolbar, FONT_SIZES, FontSizePt } from './SlideSelectionFontSizeToolbar';
 
 interface SlideEditorPaneProps {
   slide: Slide;
@@ -171,6 +172,7 @@ export const SlideEditorPane: React.FC<SlideEditorPaneProps> = ({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showTeacherGuide, setShowTeacherGuide] = useState(false);
   const [showMathToolbar, setShowMathToolbar] = useState(false);
+  const [showFontSizeToolbar, setShowFontSizeToolbar] = useState(false);
   const [lastActiveField, setLastActiveField] = useState<{
     blockId: string;
     fieldName: keyof SlideContentBlock;
@@ -357,8 +359,61 @@ export const SlideEditorPane: React.FC<SlideEditorPaneProps> = ({
     handleUpdateBlock(blockId, { [fieldName]: updatedVal });
   };
 
+  // Apply font size to currently highlighted text or active field
+  const applyFontSizeToField = (size: FontSizePt | 'default') => {
+    const activeEl = document.activeElement;
+    if (
+      activeEl &&
+      (activeEl instanceof HTMLTextAreaElement ||
+        (activeEl instanceof HTMLInputElement && activeEl.type === 'text'))
+    ) {
+      const start = activeEl.selectionStart ?? 0;
+      const end = activeEl.selectionEnd ?? 0;
+      const full = activeEl.value;
+      if (start < end) {
+        const raw = full.substring(start, end);
+        const clean = raw.replace(/\[size=[0-9]+(?:pt|px)?\]/gi, '').replace(/\[\/size\]/gi, '');
+        const replaced = size === 'default' ? clean : `[size=${size}]${clean}[/size]`;
+        const nextVal = full.substring(0, start) + replaced + full.substring(end);
+        const prototype =
+          activeEl instanceof HTMLTextAreaElement
+            ? window.HTMLTextAreaElement.prototype
+            : window.HTMLInputElement.prototype;
+        const descriptor = Object.getOwnPropertyDescriptor(prototype, 'value');
+        if (descriptor?.set) {
+          descriptor.set.call(activeEl, nextVal);
+        } else {
+          activeEl.value = nextVal;
+        }
+        activeEl.dispatchEvent(new Event('input', { bubbles: true }));
+        requestAnimationFrame(() => {
+          activeEl.focus();
+          activeEl.setSelectionRange(start, start + replaced.length);
+        });
+        return;
+      }
+    }
+
+    // If no text highlighted in active input, but lastActiveField is known:
+    if (lastActiveField) {
+      const targetBlock = blocks.find((b) => b.id === lastActiveField.blockId);
+      if (targetBlock) {
+        const snippet = size === 'default' ? 'Nội dung' : `[size=${size}]Nội dung[/size]`;
+        if (lastActiveField.fieldName === 'solutionSteps' && typeof lastActiveField.stepIndex === 'number') {
+          const steps = [...(targetBlock.solutionSteps || [])];
+          const cur = steps[lastActiveField.stepIndex] || '';
+          steps[lastActiveField.stepIndex] = cur ? `${cur} ${snippet}` : snippet;
+          handleUpdateBlock(targetBlock.id, { solutionSteps: steps });
+        } else {
+          const cur = (targetBlock[lastActiveField.fieldName] as string) || '';
+          handleUpdateBlock(targetBlock.id, { [lastActiveField.fieldName]: cur ? `${cur} ${snippet}` : snippet });
+        }
+      }
+    }
+  };
+
   // Helper to render live LaTeX Math preview under any input field
-  const renderMathPreview = (text: string | undefined | null, label: string = 'Xem trước công thức:') => {
+  const renderMathPreview = (text: string | undefined | null, label: string = 'Xem trước công thức / cỡ chữ:') => {
     if (!text) return null;
     const hasMath =
       text.includes('$') ||
@@ -367,7 +422,8 @@ export const SlideEditorPane: React.FC<SlideEditorPaneProps> = ({
       text.includes('_') ||
       text.includes('{') ||
       text.includes('}') ||
-      text.includes('√');
+      text.includes('√') ||
+      text.includes('[size=');
     if (!hasMath) return null;
     return (
       <div className="mt-1.5 p-2 px-3 rounded-xl bg-slate-950/80 border border-amber-500/30 space-y-1 text-xs text-amber-200 shadow-inner">
@@ -559,6 +615,20 @@ export const SlideEditorPane: React.FC<SlideEditorPaneProps> = ({
             <span className="hidden md:inline">Màu & Font</span>
           </button>
 
+          {/* Quick Font Size Button */}
+          <button
+            onClick={() => setShowFontSizeToolbar(!showFontSizeToolbar)}
+            title="Tùy chỉnh cỡ chữ cho nội dung bôi đen (20pt, 24pt, 28pt, 32pt, 34pt)"
+            className={`p-1.5 px-2 rounded-xl text-xs font-semibold flex items-center gap-1 transition-all ${
+              showFontSizeToolbar
+                ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/40 ring-1 ring-indigo-400'
+                : 'bg-slate-800 text-indigo-300 hover:bg-slate-700'
+            }`}
+          >
+            <Type className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Cỡ Chữ (20-34pt)</span>
+          </button>
+
           {/* LaTeX Math Toolbar Toggle */}
           <button
             onClick={() => setShowMathToolbar(!showMathToolbar)}
@@ -588,6 +658,50 @@ export const SlideEditorPane: React.FC<SlideEditorPaneProps> = ({
           </button>
         </div>
       </div>
+
+      {/* 1.3. QUICK FONT SIZE SELECTION BAR */}
+      {showFontSizeToolbar && (
+        <div className="p-2.5 px-3 bg-slate-950/95 border-b border-indigo-500/30 flex items-center justify-between gap-3 shrink-0 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs font-black uppercase tracking-wider text-indigo-300 flex items-center gap-1.5">
+              <Type className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Cỡ chữ:</span>
+            </span>
+            <span className="text-[11px] text-slate-400">
+              (Bôi đen văn bản trong ô nhập rồi bấm chọn cỡ)
+            </span>
+            <div className="flex items-center gap-1">
+              {FONT_SIZES.map((sz) => (
+                <button
+                  key={sz}
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => applyFontSizeToField(sz)}
+                  className="px-2.5 py-1 rounded-xl bg-slate-900 hover:bg-indigo-600/40 text-slate-200 hover:text-white border border-slate-700/80 hover:border-indigo-500/60 text-xs font-bold transition-all shadow-sm cursor-pointer"
+                  title={`Áp dụng cỡ chữ ${sz} cho đoạn văn bản đang bôi đen`}
+                >
+                  {sz}
+                </button>
+              ))}
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => applyFontSizeToField('default')}
+                className="px-2 py-1 rounded-xl bg-slate-900 hover:bg-rose-950/50 border border-slate-800 text-slate-400 hover:text-rose-300 text-[11px] font-medium transition-colors ml-1 cursor-pointer"
+                title="Xóa định dạng cỡ chữ (trở về mặc định)"
+              >
+                Mặc định
+              </button>
+            </div>
+          </div>
+          <button
+            onClick={() => setShowFontSizeToolbar(false)}
+            className="text-slate-400 hover:text-white p-1"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* 1.5. LATEX MATH ASSISTANT TOOLBAR */}
       {showMathToolbar && (
@@ -2043,6 +2157,12 @@ export const SlideEditorPane: React.FC<SlideEditorPaneProps> = ({
           </div>
         </div>
       )}
+
+      {/* Floating Font Size Toolbar on Text Selection (20pt, 24pt, 28pt, 32pt, 34pt) */}
+      <SlideSelectionFontSizeToolbar
+        activeSlide={slide}
+        onUpdateSlide={onUpdateSlide}
+      />
     </div>
   );
 };
