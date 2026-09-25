@@ -1218,9 +1218,9 @@ export const SlideEditModal: React.FC<SlideEditModalProps> = ({
                     <div key={idx} className="flex flex-col items-center bg-slate-900 p-2.5 rounded-2xl border border-slate-800" style={{ maxWidth: `${img.widthPercent || 75}%` }}>
                       <img src={img.url} alt={img.caption || 'Ảnh'} className="max-h-56 object-contain rounded-xl" />
                       {img.caption && (
-                        <p className="text-xs text-slate-400 mt-2 text-center">
+                        <div className="text-xs text-slate-400 mt-2 text-center">
                           <MathView content={img.caption} inline />
-                        </p>
+                        </div>
                       )}
                     </div>
                   ))}

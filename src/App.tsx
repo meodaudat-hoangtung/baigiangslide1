@@ -10,6 +10,7 @@ import { CreateLessonModal } from './components/CreateLessonModal';
 import { EmptyLessonState } from './components/EmptyLessonState';
 import { AdminPanelModal } from './components/AdminPanelModal';
 import { LoginModal } from './components/LoginModal';
+import { FullscreenPresentationModal } from './components/FullscreenPresentationModal';
 import { StorageService, getDeletedLessonIds, unrecordDeletedLessonId } from './services/storageService';
 import { FirestoreService } from './services/firestoreService';
 
@@ -397,11 +398,17 @@ export default function App() {
     }
   };
 
+  const [isPresentationOpen, setIsPresentationOpen] = useState(false);
+
   const handleToggleFullscreen = () => {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen?.().catch(() => {});
+    if (currentLesson && currentLesson.slides.length > 0) {
+      setIsPresentationOpen(true);
     } else {
-      document.exitFullscreen?.().catch(() => {});
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen?.().catch(() => {});
+      } else {
+        document.exitFullscreen?.().catch(() => {});
+      }
     }
   };
 
@@ -505,6 +512,15 @@ export default function App() {
         onClose={() => setIsAdminPanelOpen(false)}
         currentUser={currentUser}
       />
+
+      {/* Fullscreen Presentation Modal */}
+      {currentLesson && (
+        <FullscreenPresentationModal
+          lesson={currentLesson}
+          isOpen={isPresentationOpen}
+          onClose={() => setIsPresentationOpen(false)}
+        />
+      )}
 
     </div>
   );

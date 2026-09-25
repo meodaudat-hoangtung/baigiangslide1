@@ -82,7 +82,7 @@ export const FirestoreService = {
       uid: 'admin_master_root',
       email: SUPER_ADMIN_EMAIL,
       username: 'admin',
-      displayName: 'Quản Trị Viên (ADMIN)',
+      displayName: 'Quản Trị (ADMIN)',
       role: 'admin',
       status: 'active',
       createdAt: Date.now(),

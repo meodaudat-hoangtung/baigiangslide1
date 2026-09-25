@@ -880,7 +880,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
               <div>
                 <h3 className="text-base font-bold text-white flex items-center gap-2">
                   <KeyRound className="w-5 h-5 text-purple-400" />
-                  <span>Đổi Mật Khẩu Quản Trị Viên (ADMIN)</span>
+                  <span>Đổi Mật Khẩu Quản Trị (ADMIN)</span>
                 </h3>
                 <p className="text-xs text-slate-400 mt-1">
                   Mật khẩu này là chìa khóa cao nhất để mở toàn bộ quyền quản trị website và danh sách thành viên.

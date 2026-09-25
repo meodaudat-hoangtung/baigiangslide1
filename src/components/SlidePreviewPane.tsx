@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   ChevronLeft,
   ChevronRight,
@@ -17,6 +17,7 @@ import {
   BookOpen,
   HelpCircle,
   Eye,
+  EyeOff,
   CheckCircle2,
   Layers,
   Target,
@@ -49,12 +50,15 @@ import { BLOCK_TYPES_META, getSlideBlocks } from '../utils/slideBlocks';
 import { MathView } from './MathView';
 import { MediaBlockRenderer } from './MediaBlockRenderer';
 import { SlideTransitionToolbar } from './SlideTransitionToolbar';
+import { SlideTextBoxOverlay } from './SlideTextBoxOverlay';
 import {
   getSlideVariants,
   getElementVariants,
   getBlockVariants,
   TRANSITION_PRESETS
 } from '../utils/slideTransitions';
+
+const EMPTY_TEXT_BOXES: any[] = [];
 
 interface SlidePreviewPaneProps {
   slide: Slide;
@@ -133,6 +137,8 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const isDrawing = useRef(false);
+  const lastPointRef = useRef<{ x: number; y: number } | null>(null);
+  const canvasRectRef = useRef<DOMRect | null>(null);
   const prevIndexRef = useRef<number>(slideIndex);
 
   const styleConfig = slide?.styleConfig || {};
@@ -158,52 +164,92 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
   // Get blocks on current slide
   const blocks = getSlideBlocks(slide);
 
+  // Find and sort all animated text boxes on the current slide
+  const animatedTextBoxes = useMemo(() => {
+    if (!slide?.textBoxes) return [];
+    return [...slide.textBoxes]
+      .filter((b) => b.animation && b.animation !== 'none')
+      .sort((a, b) => {
+        const orderA = a.animationOrder !== undefined ? a.animationOrder : 999;
+        const orderB = b.animationOrder !== undefined ? b.animationOrder : 999;
+        if (orderA !== orderB) return orderA - orderB;
+        return slide.textBoxes!.indexOf(a) - slide.textBoxes!.indexOf(b);
+      });
+  }, [slide]);
+
+  const totalTextBoxAnimSteps = animatedTextBoxes.length;
+  const [slideAnimStep, setSlideAnimStep] = useState(0);
+  const [slideLastTriggeredStep, setSlideLastTriggeredStep] = useState(0);
+  const [manuallyRevealedBlocks, setManuallyRevealedBlocks] = useState<Record<string, boolean>>({});
+
   // Track slide navigation direction & reset block reveal count
   useEffect(() => {
+    setManuallyRevealedBlocks({});
     if (slideIndex > prevIndexRef.current) {
       setSlideDirection(1);
       setRevealedBlockCount(1);
+      setSlideAnimStep(0);
+      setSlideLastTriggeredStep(0);
     } else if (slideIndex < prevIndexRef.current) {
       setSlideDirection(-1);
       const currBlocks = getSlideBlocks(slide);
       setRevealedBlockCount(currBlocks.length || 1);
+      const animCount = (slide?.textBoxes || []).filter((b) => b.animation && b.animation !== 'none').length;
+      setSlideAnimStep(animCount);
+      setSlideLastTriggeredStep(0);
     }
     prevIndexRef.current = slideIndex;
     clearCanvas();
-  }, [slideIndex, slide]);
+  }, [slideIndex, slide?.id]);
 
-  // Advance step (next block or next slide)
+  // Advance step (next block, next text animation, or next slide)
   const handleAdvanceStep = () => {
     if (isDrawingMode) return;
     if (zoomedImage) return;
 
+    // 1. Advance modular blocks in click-to-reveal mode
     if (isClickToRevealMode && blocks.length > 0 && revealedBlockCount < blocks.length) {
-      // Reveal next block on current slide
       setRevealedBlockCount((prev) => Math.min(blocks.length, prev + 1));
-    } else {
-      // Advance to next slide
-      if (slideIndex < totalSlides - 1) {
-        setSlideDirection(1);
-        onSelectSlide(slideIndex + 1);
-        setRevealedBlockCount(1);
-      }
+      return;
+    }
+
+    // 2. Advance animated text boxes step-by-step
+    if (slideAnimStep < totalTextBoxAnimSteps) {
+      const next = slideAnimStep + 1;
+      setSlideAnimStep(next);
+      setSlideLastTriggeredStep(next);
+      return;
+    }
+
+    // 3. When all blocks and animations are done -> advance to next slide!
+    if (slideIndex < totalSlides - 1) {
+      setSlideDirection(1);
+      onSelectSlide(slideIndex + 1);
+      setRevealedBlockCount(1);
+      setSlideAnimStep(0);
+      setSlideLastTriggeredStep(0);
     }
   };
 
-  // Previous step (previous block or previous slide)
+  // Previous step (previous text animation, previous block, or previous slide)
   const handlePreviousStep = () => {
     if (isDrawingMode) return;
     if (zoomedImage) return;
 
+    if (slideAnimStep > 0) {
+      setSlideAnimStep((prev) => prev - 1);
+      setSlideLastTriggeredStep(0);
+      return;
+    }
+
     if (isClickToRevealMode && blocks.length > 0 && revealedBlockCount > 1) {
-      // Step back 1 block on current slide
       setRevealedBlockCount((prev) => Math.max(1, prev - 1));
-    } else {
-      // Go back to previous slide
-      if (slideIndex > 0) {
-        setSlideDirection(-1);
-        onSelectSlide(slideIndex - 1);
-      }
+      return;
+    }
+
+    if (slideIndex > 0) {
+      setSlideDirection(-1);
+      onSelectSlide(slideIndex - 1);
     }
   };
 
@@ -354,13 +400,19 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
         setIsLaserMode(false);
       } else if (
         e.key === 'ArrowRight' ||
+        e.key === 'ArrowDown' ||
         e.key === 'Enter' ||
         e.key === ' ' ||
         e.key === 'PageDown'
       ) {
         e.preventDefault();
         handleAdvanceStep();
-      } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+      } else if (
+        e.key === 'ArrowLeft' ||
+        e.key === 'ArrowUp' ||
+        e.key === 'PageUp' ||
+        e.key === 'Backspace'
+      ) {
         e.preventDefault();
         handlePreviousStep();
       } else if (e.key === '+' || e.key === '=') {
@@ -371,22 +423,56 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isFullscreen, slideIndex, totalSlides, zoomedImage, isClickToRevealMode, blocks.length, revealedBlockCount, isDrawingMode, isControlsPinned]);
+  }, [isFullscreen, slideIndex, totalSlides, zoomedImage, isClickToRevealMode, blocks.length, revealedBlockCount, slideAnimStep, totalTextBoxAnimSteps, isDrawingMode, isControlsPinned]);
 
-  // Canvas resize logic
-  useEffect(() => {
+  // Canvas resize logic with pixel-perfect synchronization
+  const syncCanvasSize = useCallback(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
-    const updateCanvasSize = () => {
-      if (canvas.parentElement) {
-        canvas.width = canvas.parentElement.clientWidth;
-        canvas.height = canvas.parentElement.clientHeight;
+    if (!canvas || !canvas.parentElement) return;
+
+    const rect = canvas.parentElement.getBoundingClientRect();
+    const newWidth = Math.round(rect.width);
+    const newHeight = Math.round(rect.height);
+
+    if (newWidth <= 0 || newHeight <= 0) return;
+
+    if (canvas.width !== newWidth || canvas.height !== newHeight) {
+      const prevCanvas = document.createElement('canvas');
+      prevCanvas.width = canvas.width;
+      prevCanvas.height = canvas.height;
+      const prevCtx = prevCanvas.getContext('2d');
+      if (prevCtx && canvas.width > 0 && canvas.height > 0) {
+        prevCtx.drawImage(canvas, 0, 0);
       }
+
+      canvas.width = newWidth;
+      canvas.height = newHeight;
+
+      const ctx = canvas.getContext('2d');
+      if (ctx && prevCanvas.width > 0 && prevCanvas.height > 0) {
+        ctx.drawImage(prevCanvas, 0, 0, newWidth, newHeight);
+      }
+    }
+
+    canvasRectRef.current = canvas.getBoundingClientRect();
+  }, []);
+
+  useEffect(() => {
+    syncCanvasSize();
+    const canvas = canvasRef.current;
+    if (!canvas || !canvas.parentElement) return;
+
+    const observer = new ResizeObserver(() => {
+      syncCanvasSize();
+    });
+    observer.observe(canvas.parentElement);
+    window.addEventListener('resize', syncCanvasSize);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', syncCanvasSize);
     };
-    updateCanvasSize();
-    window.addEventListener('resize', updateCanvasSize);
-    return () => window.removeEventListener('resize', updateCanvasSize);
-  }, [isFullscreen, slideIndex, tvScale]);
+  }, [isFullscreen, slideIndex, tvScale, syncCanvasSize]);
 
   const clearCanvas = () => {
     const canvas = canvasRef.current;
@@ -394,41 +480,87 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
       const ctx = canvas.getContext('2d');
       ctx?.clearRect(0, 0, canvas.width, canvas.height);
     }
+    lastPointRef.current = null;
+    isDrawing.current = false;
   };
 
-  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  const getCanvasCoords = (clientX: number, clientY: number) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return { x: 0, y: 0 };
+    const rect = canvasRectRef.current || canvas.getBoundingClientRect();
+    const scaleX = rect.width > 0 ? canvas.width / rect.width : 1;
+    const scaleY = rect.height > 0 ? canvas.height / rect.height : 1;
+    return {
+      x: (clientX - rect.left) * scaleX,
+      y: (clientY - rect.top) * scaleY,
+    };
+  };
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (!isDrawingMode) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
+
+    try {
+      canvas.setPointerCapture(e.pointerId);
+    } catch (_) {}
+
+    canvasRectRef.current = canvas.getBoundingClientRect();
     isDrawing.current = true;
-    const rect = canvas.getBoundingClientRect();
+
+    const { x, y } = getCanvasCoords(e.clientX, e.clientY);
+    lastPointRef.current = { x, y };
+
+    ctx.fillStyle = activePenColor;
     ctx.beginPath();
-    ctx.moveTo(e.clientX - rect.left, e.clientY - rect.top);
-    ctx.strokeStyle = activePenColor;
-    ctx.lineWidth = 3.5;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
+    ctx.arc(x, y, 1.75, 0, Math.PI * 2);
+    ctx.fill();
   };
 
-  const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (isLaserMode) {
-      const rect = e.currentTarget.getBoundingClientRect();
+      const canvas = canvasRef.current;
+      const rect = canvasRectRef.current || (canvas ? canvas.getBoundingClientRect() : e.currentTarget.getBoundingClientRect());
       setLaserPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
     }
+
     if (!isDrawing.current || !isDrawingMode) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    const rect = canvas.getBoundingClientRect();
-    ctx.lineTo(e.clientX - rect.left, e.clientY - rect.top);
-    ctx.stroke();
+
+    ctx.strokeStyle = activePenColor;
+    ctx.lineWidth = 3.5;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    const rawEvents = (e.nativeEvent && (e.nativeEvent as any).getCoalescedEvents?.()) || [e];
+
+    for (const ev of rawEvents) {
+      const { x, y } = getCanvasCoords(ev.clientX, ev.clientY);
+      const last = lastPointRef.current || { x, y };
+
+      ctx.beginPath();
+      ctx.moveTo(last.x, last.y);
+      ctx.lineTo(x, y);
+      ctx.stroke();
+
+      lastPointRef.current = { x, y };
+    }
   };
 
-  const stopDrawing = () => {
+  const handlePointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
     isDrawing.current = false;
+    lastPointRef.current = null;
+    const canvas = canvasRef.current;
+    if (canvas) {
+      try {
+        canvas.releasePointerCapture(e.pointerId);
+      } catch (_) {}
+    }
   };
 
   // Example step handler
@@ -908,12 +1040,13 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
         {/* Drawing Overlay Canvas */}
         <canvas
           ref={canvasRef}
-          onMouseDown={startDrawing}
-          onMouseMove={draw}
-          onMouseUp={stopDrawing}
-          onMouseLeave={stopDrawing}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerUp}
+          onPointerLeave={handlePointerUp}
           className={`absolute inset-0 z-20 pointer-events-${isDrawingMode ? 'auto' : 'none'}`}
-          style={{ width: '100%', height: '100%' }}
+          style={{ width: '100%', height: '100%', touchAction: 'none' }}
         />
 
         {/* Laser Pointer Dot */}
@@ -947,28 +1080,13 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
               transition: 'transform 0.15s ease-out',
             }}
           >
-          {/* ============================================================= */}
-          {/* EMPTY SLIDE STATE (KHI SLIDE TRỐNG CHƯA CÓ KHỐI NÀO)          */}
-          {/* ============================================================= */}
-          {blocks.length === 0 && (
-            <div className="flex flex-col items-center justify-center p-12 sm:p-16 text-center rounded-3xl bg-slate-900/60 border-2 border-dashed border-slate-800 space-y-4 my-8 shadow-2xl backdrop-blur-sm">
-              <div className="w-20 h-20 rounded-3xl bg-indigo-950/80 border-2 border-indigo-500/40 flex items-center justify-center text-indigo-400 shadow-2xl">
-                <Sparkles className="w-10 h-10 animate-pulse text-indigo-300" />
-              </div>
-
-              <div className="space-y-2 max-w-lg">
-                <h3 className="text-xl sm:text-2xl font-black text-white">Slide Này Đang Trống</h3>
-                <p className="text-sm sm:text-base text-slate-400 leading-relaxed font-normal">
-                  Chưa có khối nội dung nào được thêm vào slide này. Hãy sử dụng bảng điều khiển bên trái để
-                  thêm các khối: Tiêu đề bài học, Chèn ảnh minh họa, Ghi nhớ SGK, Ví dụ giải từng bước...
-                </p>
-              </div>
-
-              <div className="pt-2 text-xs font-bold text-indigo-400 bg-indigo-950/50 px-4 py-2 rounded-2xl border border-indigo-500/30">
-                ✨ Mẹo: Bạn có thể thêm nhiều khối và kéo thả sắp xếp tùy thích!
-              </div>
-            </div>
-          )}
+            {/* PowerPoint Floating Text Boxes Overlay */}
+            <SlideTextBoxOverlay
+              textBoxes={slide?.textBoxes || EMPTY_TEXT_BOXES}
+              isEditable={false}
+              revealedAnimStep={slideAnimStep}
+              lastTriggeredStep={slideLastTriggeredStep}
+            />
 
           {/* ============================================================= */}
           {/* RENDER MODULAR BLOCKS IN EXACT ORDER                          */}
@@ -986,6 +1104,35 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
                 // If in click-to-reveal mode, only show blocks up to revealed count
                 const isVisible = !isClickToRevealMode || bIdx < revealedBlockCount;
                 if (!isVisible) return null;
+
+                // If block is explicitly marked as hidden by teacher
+                if (block.isHidden && !manuallyRevealedBlocks[block.id]) {
+                  return (
+                    <div
+                      key={`hidden-block-${block.id || bIdx}`}
+                      className="p-3 px-4 rounded-2xl bg-slate-900/80 border border-dashed border-amber-500/60 flex items-center justify-between text-xs text-amber-200/90 shadow-md backdrop-blur-sm group hover:border-amber-400 transition-colors my-2"
+                    >
+                      <div className="flex items-center gap-2 font-bold">
+                        <EyeOff className="w-4 h-4 text-amber-400 shrink-0" />
+                        <span>Đối tượng [{block.title || 'Khối nội dung'}] đang bị ẩn</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setManuallyRevealedBlocks((prev) => ({
+                            ...prev,
+                            [block.id]: true,
+                          }))
+                        }
+                        title="Nhấp để hiển thị đối tượng này"
+                        className="px-3 py-1 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs flex items-center gap-1.5 shadow transition-all cursor-pointer hover:scale-105 active:scale-95"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                        <span>Hiện đối tượng</span>
+                      </button>
+                    </div>
+                  );
+                }
 
                 const blockVariants = getBlockVariants(
                   block.animation,
@@ -1526,8 +1673,24 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
                   variants={blockVariants}
                   initial="initial"
                   animate="animate"
-                  className="relative w-full"
+                  className="relative w-full group/block"
                 >
+                  {block.isHidden && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setManuallyRevealedBlocks((prev) => ({
+                          ...prev,
+                          [block.id]: false,
+                        }))
+                      }
+                      title="Ẩn lại đối tượng này"
+                      className="absolute top-2 right-2 z-20 px-2 py-0.5 rounded-full bg-slate-900/90 border border-amber-500/60 hover:bg-amber-600 text-amber-300 hover:text-white text-[11px] font-bold flex items-center gap-1 shadow-lg transition-all cursor-pointer"
+                    >
+                      <EyeOff className="w-3 h-3 text-amber-300" />
+                      <span>Ẩn lại</span>
+                    </button>
+                  )}
                   {blockContent}
                 </motion.div>
               );

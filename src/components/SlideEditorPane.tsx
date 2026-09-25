@@ -43,14 +43,16 @@ import {
   Sliders,
   Sigma,
   Music,
-  Video
+  Video,
+  Wrench
 } from 'lucide-react';
 import {
   Slide,
   SlideContentBlock,
   SlideBlockType,
   SlideStyleConfig,
-  BlockAnimationEffect
+  BlockAnimationEffect,
+  SlideTextBox
 } from '../types';
 import {
   BLOCK_TYPES_META,
@@ -165,7 +167,9 @@ export const SlideEditorPane: React.FC<SlideEditorPaneProps> = ({
 
   // States
   const [collapsedBlocks, setCollapsedBlocks] = useState<Record<string, boolean>>({});
-  const [isBlockPaletteExpanded, setIsBlockPaletteExpanded] = useState(false);
+  const [showToolsMenu, setShowToolsMenu] = useState(false);
+  const [addedBlockToast, setAddedBlockToast] = useState<string | null>(null);
+  const toolsMenuRef = useRef<HTMLDivElement>(null);
   const [animConfigBlockId, setAnimConfigBlockId] = useState<string | null>(null);
   const [showStylePanel, setShowStylePanel] = useState(false);
   const [showSlideOutlineModal, setShowSlideOutlineModal] = useState(false);
@@ -179,6 +183,39 @@ export const SlideEditorPane: React.FC<SlideEditorPaneProps> = ({
     stepIndex?: number;
   } | null>(null);
   const [copiedNotification, setCopiedNotification] = useState<string | null>(null);
+
+  // Close tools menu on click outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (toolsMenuRef.current && !toolsMenuRef.current.contains(e.target as Node)) {
+        setShowToolsMenu(false);
+      }
+    };
+    if (showToolsMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showToolsMenu]);
+
+  // Close tools menu on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && showToolsMenu) {
+        setShowToolsMenu(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showToolsMenu]);
+
+  // Active tools count indicator
+  const activeToolCount =
+    (showStylePanel ? 1 : 0) +
+    (showFontSizeToolbar ? 1 : 0) +
+    (showMathToolbar ? 1 : 0) +
+    (showTeacherGuide ? 1 : 0);
 
   // Helper to commit block list changes
   const updateBlocks = (newBlocks: SlideContentBlock[]) => {
@@ -195,10 +232,42 @@ export const SlideEditorPane: React.FC<SlideEditorPaneProps> = ({
   };
 
   // Add block
-  const handleAddBlock = (type: SlideBlockType) => {
+  const handleAddBlock = (type: SlideBlockType, label?: string) => {
     const newBlock = createDefaultBlock(type);
     const newBlocks = [...blocks, newBlock];
     updateBlocks(newBlocks);
+    if (label) {
+      setAddedBlockToast(`Đã thêm khối "${label}"`);
+      setTimeout(() => setAddedBlockToast(null), 2500);
+    }
+  };
+
+  // Add PowerPoint free-floating text box
+  const handleAddTextBox = () => {
+    if (!slide) return;
+    const currentTextBoxes = slide.textBoxes || [];
+    const offset = (currentTextBoxes.length % 5) * 4;
+    const newBox: SlideTextBox = {
+      id: `tb_${Date.now()}`,
+      text: 'Nhập nội dung văn bản...',
+      x: 25 + offset,
+      y: 30 + offset,
+      width: 45,
+      fontSize: 24,
+      color: '#ffffff',
+      backgroundColor: 'transparent',
+      borderColor: 'transparent',
+      borderWidth: 0,
+      fontWeight: 'normal',
+      fontStyle: 'normal',
+      textAlign: 'left',
+    };
+    onUpdateSlide({
+      ...slide,
+      textBoxes: [...currentTextBoxes, newBox],
+    });
+    setAddedBlockToast('Đã thêm 1 Text Box (nhấp đúp trên slide để gõ chữ, kéo để di chuyển)');
+    setTimeout(() => setAddedBlockToast(null), 3000);
   };
 
   // Update specific block
@@ -569,93 +638,340 @@ export const SlideEditorPane: React.FC<SlideEditorPaneProps> = ({
           </button>
         </div>
 
-        {/* Slide Actions */}
-        <div className="flex items-center gap-1.5 flex-wrap">
-          {/* Add Blank Slide */}
+        {/* Slide Controls & 'Công cụ' Menu */}
+        <div className="flex items-center gap-2">
+          {/* Quick toggle to collapse/expand all blocks if there are blocks */}
+          {blocks.length > 0 && (
+            <button
+              type="button"
+              onClick={handleToggleAllBlocks}
+              title={allBlocksCollapsed ? 'Mở rộng tất cả các khối trên slide' : 'Thu gọn tất cả các khối trên slide'}
+              className="p-1.5 px-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 hover:text-white text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
+            >
+              {allBlocksCollapsed ? (
+                <>
+                  <ChevronDown className="w-3.5 h-3.5 text-indigo-400" />
+                  <span className="hidden sm:inline">Mở rộng ({blocks.length}) khối</span>
+                  <span className="sm:hidden font-mono">({blocks.length})</span>
+                </>
+              ) : (
+                <>
+                  <ChevronUp className="w-3.5 h-3.5 text-amber-400" />
+                  <span className="hidden sm:inline">Thu gọn ({blocks.length}) khối</span>
+                  <span className="sm:hidden font-mono">({blocks.length})</span>
+                </>
+              )}
+            </button>
+          )}
+
+          {/* Quick Action: Chèn Ảnh */}
           <button
-            onClick={handleAddNewBlankSlide}
-            title="Tạo thêm 1 slide trống mới ngay sau slide này"
-            className="px-2.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold flex items-center gap-1.5 shadow transition-all"
+            type="button"
+            onClick={() => handleAddBlock('image', 'Chèn Ảnh')}
+            title="Chèn ảnh minh họa, sơ đồ, đồ thị hình học"
+            className="p-1.5 px-2.5 rounded-xl bg-slate-800 hover:bg-pink-950/40 border border-slate-700 hover:border-pink-500/50 text-slate-200 hover:text-pink-300 text-xs font-bold flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
           >
-            <Plus className="w-3.5 h-3.5" />
-            <span>+ Slide Trống</span>
+            <ImageIcon className="w-3.5 h-3.5 text-pink-400" />
+            <span className="hidden lg:inline">Chèn Ảnh</span>
           </button>
 
-          {/* Clear Slide to Blank */}
+          {/* Quick Action: Video / Âm Thanh */}
           <button
-            onClick={handleClearSlideToBlank}
-            title="Xóa toàn bộ khối trên slide này để làm mới thành slide trống"
-            className="p-1.5 px-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold flex items-center gap-1 transition-colors"
+            type="button"
+            onClick={() => handleAddBlock('media', 'Video / Âm Thanh')}
+            title="Chèn video bài giảng hoặc âm thanh giải thích"
+            className="p-1.5 px-2.5 rounded-xl bg-slate-800 hover:bg-rose-950/40 border border-slate-700 hover:border-rose-500/50 text-slate-200 hover:text-rose-300 text-xs font-bold flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
           >
-            <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
-            <span className="hidden sm:inline">Làm mới trống</span>
+            <Film className="w-3.5 h-3.5 text-rose-400" />
+            <span className="hidden lg:inline">Video / Âm Thanh</span>
           </button>
 
-          {/* Delete Current Slide */}
+          {/* Quick Action: Text Box */}
           <button
-            onClick={() => setShowDeleteConfirm(true)}
-            title="Xóa Slide hiện tại"
-            className="p-1.5 px-2 rounded-xl bg-rose-950/60 hover:bg-rose-600 border border-rose-500/40 text-rose-300 hover:text-white text-xs font-semibold flex items-center gap-1 transition-all"
+            type="button"
+            onClick={handleAddTextBox}
+            title="Chèn Hộp Chữ Tự Do (PowerPoint Text Box)"
+            className="p-1.5 px-2.5 rounded-xl bg-slate-800 hover:bg-indigo-950/40 border border-slate-700 hover:border-indigo-500/50 text-slate-200 hover:text-indigo-300 text-xs font-bold flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
           >
-            <Trash2 className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Xóa Slide</span>
+            <Type className="w-3.5 h-3.5 text-indigo-400" />
+            <span>Text Box</span>
           </button>
 
-          {/* Style & Color Settings */}
-          <button
-            onClick={() => setShowStylePanel(!showStylePanel)}
-            title="Tùy chỉnh Font chữ & Màu sắc hiển thị"
-            className={`p-1.5 px-2 rounded-xl text-xs font-semibold flex items-center gap-1 transition-all ${
-              showStylePanel
-                ? 'bg-pink-600 text-white shadow'
-                : 'bg-slate-800 text-pink-300 hover:bg-slate-700'
-            }`}
-          >
-            <Palette className="w-3.5 h-3.5" />
-            <span className="hidden md:inline">Màu & Font</span>
-          </button>
+          {/* Công cụ Dropdown Button */}
+          <div className="relative" ref={toolsMenuRef}>
+            <button
+              type="button"
+              onClick={() => setShowToolsMenu(!showToolsMenu)}
+              title="Mở menu Công cụ: Thêm khối, Định dạng, Hỗ trợ soạn thảo & Quản lý Slide"
+              className={`p-1.5 px-3 rounded-xl text-xs font-bold flex items-center gap-2 transition-all shadow-md active:scale-95 cursor-pointer ${
+                showToolsMenu
+                  ? 'bg-indigo-600 text-white ring-2 ring-indigo-400/80 shadow-indigo-600/30'
+                  : 'bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 hover:border-slate-600'
+              }`}
+            >
+              <Wrench className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Công cụ</span>
+              {(activeToolCount > 0 || (slide?.textBoxes && slide.textBoxes.length > 0)) && (
+                <span className="min-w-4 h-4 px-1 rounded-full bg-indigo-500 text-white text-[10px] font-extrabold flex items-center justify-center">
+                  {(slide?.textBoxes?.length || 0) + activeToolCount}
+                </span>
+              )}
+              <ChevronDown
+                className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${
+                  showToolsMenu ? 'rotate-180 text-white' : ''
+                }`}
+              />
+            </button>
 
-          {/* Quick Font Size Button */}
-          <button
-            onClick={() => setShowFontSizeToolbar(!showFontSizeToolbar)}
-            title="Tùy chỉnh cỡ chữ cho nội dung bôi đen (20pt, 24pt, 28pt, 32pt, 34pt)"
-            className={`p-1.5 px-2 rounded-xl text-xs font-semibold flex items-center gap-1 transition-all ${
-              showFontSizeToolbar
-                ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/40 ring-1 ring-indigo-400'
-                : 'bg-slate-800 text-indigo-300 hover:bg-slate-700'
-            }`}
-          >
-            <Type className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Cỡ Chữ (20-34pt)</span>
-          </button>
+            {/* CÔNG CỤ DROPDOWN MENU */}
+            {showToolsMenu && (
+              <div className="absolute right-0 top-full mt-2 w-[340px] sm:w-[460px] md:w-[500px] bg-slate-950/98 border border-slate-800/90 rounded-2xl shadow-2xl z-50 backdrop-blur-md p-4 space-y-4 max-h-[85vh] overflow-y-auto custom-scrollbar animate-in fade-in zoom-in-95 duration-150">
+                {/* Header */}
+                <div className="flex items-center justify-between pb-2.5 border-b border-slate-800">
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-xl bg-indigo-500/20 border border-indigo-500/40 text-indigo-400 flex items-center justify-center">
+                      <Wrench className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="text-xs font-black uppercase tracking-wider text-white">
+                        Hộp Công Cụ Sư Phạm
+                      </div>
+                      <div className="text-[10px] text-slate-400">
+                        Chèn khối, định dạng, trợ lý toán & quản lý slide
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setShowToolsMenu(false)}
+                    className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
 
-          {/* LaTeX Math Toolbar Toggle */}
-          <button
-            onClick={() => setShowMathToolbar(!showMathToolbar)}
-            title="Bảng hỗ trợ soạn công thức Toán LaTeX ($...$)"
-            className={`p-1.5 px-2 rounded-xl text-xs font-semibold flex items-center gap-1 transition-all ${
-              showMathToolbar
-                ? 'bg-amber-600 text-white shadow-lg shadow-amber-600/30'
-                : 'bg-slate-800 text-amber-300 hover:bg-slate-700'
-            }`}
-          >
-            <Sigma className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Toán LaTeX ($)</span>
-          </button>
+                {/* Added Block Toast inside Menu if present */}
+                {addedBlockToast && (
+                  <div className="p-2 px-3 rounded-xl bg-emerald-950/80 border border-emerald-500/50 text-emerald-300 text-xs font-bold flex items-center gap-2 animate-in fade-in">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span>{addedBlockToast}</span>
+                  </div>
+                )}
 
-          {/* Teacher Guide Toggle */}
-          <button
-            onClick={() => setShowTeacherGuide(!showTeacherGuide)}
-            title="Lời thoại giảng dạy của giáo viên"
-            className={`p-1.5 px-2 rounded-xl text-xs font-semibold flex items-center gap-1 transition-all ${
-              showTeacherGuide
-                ? 'bg-indigo-600 text-white shadow'
-                : 'bg-slate-800 text-indigo-300 hover:bg-slate-700'
-            }`}
-          >
-            <MessageSquare className="w-3.5 h-3.5" />
-            <span className="hidden lg:inline">Lời Giảng</span>
-          </button>
+                {/* 1. CHÈN VĂN BẢN & KHỐI SƯ PHẠM */}
+                <div className="space-y-2.5">
+                  <div className="flex items-center justify-between text-[11px] font-extrabold uppercase tracking-wider text-emerald-400">
+                    <span className="flex items-center gap-1.5">
+                      <Plus className="w-3.5 h-3.5" />
+                      Chèn Hộp Chữ & Khối Sư Phạm
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-normal lowercase">
+                      (chèn vào slide)
+                    </span>
+                  </div>
+
+                  {/* TEXT BOX AS A FIRST-CLASS TOOL IN THE TOOLS BOX */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleAddTextBox();
+                      setShowToolsMenu(false);
+                    }}
+                    title="Chèn Hộp Văn Bản tự do (PowerPoint Text Box) - Kéo thả, chỉnh cỡ chữ, màu sắc & công thức"
+                    className="w-full p-2.5 rounded-xl border border-indigo-500/60 bg-gradient-to-r from-indigo-950/90 via-slate-900 to-indigo-950/90 hover:from-indigo-900 hover:to-indigo-800 text-white flex items-center justify-between transition-all shadow-md group cursor-pointer active:scale-[0.99]"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-lg bg-indigo-600 border border-indigo-400/50 flex items-center justify-center font-black text-white text-sm shadow group-hover:scale-105 transition-transform">
+                        A
+                      </div>
+                      <div className="text-left">
+                        <div className="text-xs font-bold text-white flex items-center gap-2">
+                          <span>Hộp Chữ Tự Do (Text Box)</span>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-500/30 text-indigo-300 font-semibold border border-indigo-400/30">
+                            PowerPoint
+                          </span>
+                          {slide?.textBoxes && slide.textBoxes.length > 0 && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                              Đang có {slide.textBoxes.length} hộp
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[10px] text-slate-300">
+                          Kéo thả vị trí, chỉnh cỡ chữ (20-34pt), màu sắc, phông nền & công thức LaTeX
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1 text-indigo-300 group-hover:text-white text-xs font-bold transition-colors shrink-0">
+                      <span>+ Chèn</span>
+                      <Plus className="w-3.5 h-3.5" />
+                    </div>
+                  </button>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                    {BLOCK_MENU_ITEMS.map((item) => {
+                      const Icon = item.icon;
+                      return (
+                        <button
+                          key={item.type}
+                          type="button"
+                          onClick={() => handleAddBlock(item.type, item.label)}
+                          title={item.desc}
+                          className={`flex items-center gap-2 p-2 rounded-xl border text-xs font-bold transition-all shadow-sm active:scale-95 text-left cursor-pointer ${item.colorClass}`}
+                        >
+                          <Icon className="w-3.5 h-3.5 flex-shrink-0" />
+                          <span className="truncate">{item.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* 2. ĐỊNH DẠNG & TRỢ LÝ GIẢNG DẠY */}
+                <div className="space-y-2 pt-2 border-t border-slate-800/80">
+                  <div className="text-[11px] font-extrabold uppercase tracking-wider text-indigo-300 flex items-center gap-1.5">
+                    <SlidersHorizontal className="w-3.5 h-3.5 text-indigo-400" />
+                    <span>Định Dạng & Trợ Lý Giảng Dạy</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {/* Style & Color */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowStylePanel(!showStylePanel);
+                        setShowToolsMenu(false);
+                      }}
+                      className={`p-2.5 rounded-xl border text-xs font-bold flex items-center justify-between transition-all cursor-pointer ${
+                        showStylePanel
+                          ? 'bg-pink-600 text-white border-pink-400 shadow-md'
+                          : 'bg-slate-900 hover:bg-slate-800 text-pink-300 border-slate-800'
+                      }`}
+                    >
+                      <span className="flex items-center gap-1.5">
+                        <Palette className="w-3.5 h-3.5" />
+                        Màu & Font
+                      </span>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${showStylePanel ? 'bg-pink-800 text-white' : 'bg-slate-800 text-slate-400'}`}>
+                        {showStylePanel ? 'Bật' : 'Tắt'}
+                      </span>
+                    </button>
+
+                    {/* Font Size Toolbar */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowFontSizeToolbar(!showFontSizeToolbar);
+                        setShowToolsMenu(false);
+                      }}
+                      className={`p-2.5 rounded-xl border text-xs font-bold flex items-center justify-between transition-all cursor-pointer ${
+                        showFontSizeToolbar
+                          ? 'bg-indigo-600 text-white border-indigo-400 shadow-md'
+                          : 'bg-slate-900 hover:bg-slate-800 text-indigo-300 border-slate-800'
+                      }`}
+                    >
+                      <span className="flex items-center gap-1.5">
+                        <Type className="w-3.5 h-3.5" />
+                        Cỡ Chữ (20-34pt)
+                      </span>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${showFontSizeToolbar ? 'bg-indigo-800 text-white' : 'bg-slate-800 text-slate-400'}`}>
+                        {showFontSizeToolbar ? 'Bật' : 'Tắt'}
+                      </span>
+                    </button>
+
+                    {/* LaTeX Math Toolbar */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowMathToolbar(!showMathToolbar);
+                        setShowToolsMenu(false);
+                      }}
+                      className={`p-2.5 rounded-xl border text-xs font-bold flex items-center justify-between transition-all cursor-pointer ${
+                        showMathToolbar
+                          ? 'bg-amber-600 text-white border-amber-400 shadow-md'
+                          : 'bg-slate-900 hover:bg-slate-800 text-amber-300 border-slate-800'
+                      }`}
+                    >
+                      <span className="flex items-center gap-1.5">
+                        <Sigma className="w-3.5 h-3.5" />
+                        Toán LaTeX ($)
+                      </span>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${showMathToolbar ? 'bg-amber-800 text-white' : 'bg-slate-800 text-slate-400'}`}>
+                        {showMathToolbar ? 'Bật' : 'Tắt'}
+                      </span>
+                    </button>
+
+                    {/* Teacher Guide */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowTeacherGuide(!showTeacherGuide);
+                        setShowToolsMenu(false);
+                      }}
+                      className={`p-2.5 rounded-xl border text-xs font-bold flex items-center justify-between transition-all cursor-pointer ${
+                        showTeacherGuide
+                          ? 'bg-indigo-600 text-white border-indigo-400 shadow-md'
+                          : 'bg-slate-900 hover:bg-slate-800 text-indigo-300 border-slate-800'
+                      }`}
+                    >
+                      <span className="flex items-center gap-1.5">
+                        <MessageSquare className="w-3.5 h-3.5" />
+                        Lời Giảng
+                      </span>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${showTeacherGuide ? 'bg-indigo-800 text-white' : 'bg-slate-800 text-slate-400'}`}>
+                        {showTeacherGuide ? 'Bật' : 'Tắt'}
+                      </span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* 3. QUẢN LÝ SLIDE */}
+                <div className="space-y-2 pt-2 border-t border-slate-800/80">
+                  <div className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                    <Layers className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Thao Tác Slide</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    {/* Add Blank Slide */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleAddNewBlankSlide();
+                        setShowToolsMenu(false);
+                      }}
+                      className="p-2.5 rounded-xl bg-indigo-600/20 hover:bg-indigo-600 border border-indigo-500/40 text-indigo-300 hover:text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>+ Slide Trống</span>
+                    </button>
+
+                    {/* Clear Slide to blank */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleClearSlideToBlank();
+                        setShowToolsMenu(false);
+                      }}
+                      className="p-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-amber-300 hover:text-amber-200 text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Làm mới trống</span>
+                    </button>
+
+                    {/* Delete current slide */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowDeleteConfirm(true);
+                        setShowToolsMenu(false);
+                      }}
+                      className="p-2.5 rounded-xl bg-rose-950/40 hover:bg-rose-600 border border-rose-500/40 text-rose-300 hover:text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Xóa Slide</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -848,109 +1164,7 @@ export const SlideEditorPane: React.FC<SlideEditorPaneProps> = ({
         </div>
       )}
 
-      {/* 4. MAIN ACTION: ADD BLOCK PALETTE (PALETTE THÊM KHỐI) */}
-      <div className="px-3 py-2 sm:px-4 sm:py-2.5 bg-slate-950/80 border-b border-slate-800 shrink-0 transition-all">
-        <div className="flex items-center justify-between gap-2 flex-wrap">
-          {/* Left: Header label and quick block insert pills */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <div className="flex items-center gap-1.5">
-              <span className="w-6 h-6 rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center">
-                <Plus className="w-3.5 h-3.5" />
-              </span>
-              <span className="text-xs font-black uppercase tracking-wider text-slate-200">
-                Bảng Thêm Khối:
-              </span>
-            </div>
-
-            {/* Quick block insert pills (always accessible even when collapsed) */}
-            <div className="flex items-center gap-1 overflow-x-auto py-0.5">
-              {[
-                { type: 'image' as SlideBlockType, label: 'Ảnh', icon: ImageIcon, color: 'hover:bg-pink-600/30 text-pink-300 border-pink-500/30' },
-                { type: 'content' as SlideBlockType, label: 'Lý Thuyết', icon: FileText, color: 'hover:bg-purple-600/30 text-purple-300 border-purple-500/30' },
-                { type: 'takeaway' as SlideBlockType, label: 'Ghi Nhớ', icon: Bookmark, color: 'hover:bg-indigo-600/30 text-indigo-300 border-indigo-500/30' },
-                { type: 'example' as SlideBlockType, label: 'Ví Dụ', icon: Lightbulb, color: 'hover:bg-emerald-600/30 text-emerald-300 border-emerald-500/30' },
-                { type: 'practice' as SlideBlockType, label: 'Luyện Tập', icon: Dumbbell, color: 'hover:bg-sky-600/30 text-sky-300 border-sky-500/30' },
-              ].map((quick) => {
-                const QuickIcon = quick.icon;
-                return (
-                  <button
-                    key={quick.type}
-                    type="button"
-                    onClick={() => handleAddBlock(quick.type)}
-                    title={`Chèn nhanh khối ${quick.label} vào slide`}
-                    className={`px-2 py-1 rounded-lg border text-[11px] font-bold flex items-center gap-1 bg-slate-900/90 transition-all active:scale-95 ${quick.color}`}
-                  >
-                    <QuickIcon className="w-3 h-3" />
-                    <span>+{quick.label}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Right: Block counter, Bulk collapse/expand blocks, and Palette collapse toggle */}
-          <div className="flex items-center gap-1.5 ml-auto">
-            {blocks.length > 0 && (
-              <button
-                type="button"
-                onClick={handleToggleAllBlocks}
-                title={allBlocksCollapsed ? 'Mở rộng tất cả các khối trên slide' : 'Thu gọn tất cả các khối trên slide'}
-                className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700/70 text-slate-300 hover:text-white text-[11px] font-bold flex items-center gap-1 transition-all"
-              >
-                {allBlocksCollapsed ? (
-                  <>
-                    <ChevronDown className="w-3 h-3 text-indigo-400" />
-                    <span>Mở rộng ({blocks.length}) khối</span>
-                  </>
-                ) : (
-                  <>
-                    <ChevronUp className="w-3 h-3 text-amber-400" />
-                    <span>Thu gọn ({blocks.length}) khối</span>
-                  </>
-                )}
-              </button>
-            )}
-
-            <button
-              type="button"
-              onClick={() => setIsBlockPaletteExpanded(!isBlockPaletteExpanded)}
-              className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 hover:text-white text-[11px] font-bold flex items-center gap-1.5 transition-all shadow-sm"
-            >
-              <span>{isBlockPaletteExpanded ? 'Thu gọn bảng khối' : 'Mở bảng tất cả khối (12)'}</span>
-              {isBlockPaletteExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-            </button>
-          </div>
-        </div>
-
-        {/* Expanded Grid View: 12 pedagogical blocks */}
-        {isBlockPaletteExpanded && (
-          <div className="mt-3 pt-3 border-t border-slate-800/80 space-y-2">
-            <div className="text-[11px] text-slate-400 flex items-center justify-between">
-              <span>Bấm vào một loại khối để chèn ngay vào cuối slide hiện tại:</span>
-              <span className="text-emerald-400 font-semibold hidden sm:inline">12 loại khối sư phạm chuẩn</span>
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-1.5 sm:gap-2">
-              {BLOCK_MENU_ITEMS.map((item) => {
-                const Icon = item.icon;
-                return (
-                  <button
-                    key={item.type}
-                    type="button"
-                    onClick={() => handleAddBlock(item.type)}
-                    title={item.desc}
-                    className={`flex items-center gap-1.5 px-2.5 py-2 rounded-xl border text-xs font-bold transition-all shadow-sm active:scale-95 ${item.colorClass}`}
-                  >
-                    <Icon className="w-3.5 h-3.5 flex-shrink-0" />
-                    <span className="truncate">{item.label}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* 5. SLIDE CANVAS / LIST OF BLOCKS */}
+      {/* 4. SLIDE CANVAS / LIST OF BLOCKS */}
       <div className="flex-1 overflow-y-auto p-3 sm:p-4 lg:p-6 space-y-4 custom-scrollbar">
         {/* EMPTY SLIDE STATE */}
         {blocks.length === 0 && (
@@ -962,7 +1176,7 @@ export const SlideEditorPane: React.FC<SlideEditorPaneProps> = ({
             <div className="space-y-1 max-w-md">
               <h3 className="text-lg font-black text-white">Slide Này Đang Trống</h3>
               <p className="text-xs sm:text-sm text-slate-400 leading-relaxed">
-                Hãy bấm vào các nút khối phía trên để bắt đầu thêm nội dung tùy chọn: Tiêu đề bài học,
+                Hãy mở menu <span className="text-indigo-300 font-bold">"Công cụ"</span> ở góc trên hoặc bấm vào các nút gợi ý bên dưới để bắt đầu chèn nội dung: Tiêu đề bài học,
                 Khối chèn hình ảnh, Ghi nhớ trọng tâm, Ví dụ, hoặc Bài tập...
               </p>
             </div>
@@ -2014,6 +2228,77 @@ export const SlideEditorPane: React.FC<SlideEditorPaneProps> = ({
             </div>
           );
         })}
+
+        {/* ========================================================= */}
+        {/* HỘP VĂN BẢN TỰ DO (POWERPOINT TEXT BOXES)                  */}
+        {/* ========================================================= */}
+        {slide.textBoxes && slide.textBoxes.length > 0 && (
+          <div className="rounded-2xl bg-indigo-950/30 border border-indigo-500/40 p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-6 rounded-lg bg-indigo-600/30 border border-indigo-400/50 flex items-center justify-center text-xs font-black text-indigo-300">
+                  A
+                </div>
+                <span className="text-xs font-black uppercase tracking-wider text-indigo-300">
+                  Hộp Văn Bản Tự Do ({slide.textBoxes.length} Text Box)
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={handleAddTextBox}
+                className="px-2.5 py-1 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold flex items-center gap-1 transition-all cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>+ Thêm Text Box</span>
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              {slide.textBoxes.map((tb, tbIdx) => (
+                <div key={tb.id || tbIdx} className="p-3 rounded-xl bg-slate-900 border border-slate-700/80 space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-slate-300">
+                      Text Box #{tbIdx + 1} (Cỡ: {tb.fontSize || 24}pt)
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const updated = (slide.textBoxes || []).filter((_, i) => i !== tbIdx);
+                        onUpdateSlide({ ...slide, textBoxes: updated });
+                      }}
+                      className="p-1 rounded text-rose-400 hover:text-rose-200 hover:bg-rose-950/60 cursor-pointer"
+                      title="Xóa Text Box này"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  <textarea
+                    rows={2}
+                    value={tb.text || ''}
+                    onChange={(e) => {
+                      const updated = (slide.textBoxes || []).map((b, i) =>
+                        i === tbIdx ? { ...b, text: e.target.value } : b
+                      );
+                      onUpdateSlide({ ...slide, textBoxes: updated });
+                    }}
+                    placeholder="Nhập nội dung văn bản hoặc công thức toán $...$..."
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-xs sm:text-sm text-white focus:ring-1 focus:ring-indigo-500 outline-none resize-y"
+                  />
+
+                  {tb.text && (
+                    <div className="p-2 rounded-lg bg-black/60 border border-amber-500/30 text-xs">
+                      <span className="text-[10px] font-bold text-amber-300 block mb-1">
+                        Xem trước hiển thị:
+                      </span>
+                      <MathView content={tb.text} text={tb.text} className="text-white" />
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* 6. SLIDE OUTLINE / ALL SLIDES LIST MODAL */}

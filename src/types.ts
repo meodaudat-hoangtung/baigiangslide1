@@ -197,6 +197,7 @@ export interface SlideContentBlock {
   animation?: BlockAnimationEffect; // Hiệu ứng hoạt họa riêng biệt của khối
   animationDelay?: number; // Độ trễ xuất hiện (giây), vd: 0, 0.2, 0.4, 0.8...
   animationDuration?: number; // Thời lượng hiệu ứng (giây), vd: 0.35, 0.5, 0.8
+  isHidden?: boolean; // Ẩn / hiện đối tượng khối trên trang chiếu
 }
 
 export interface SlideSection {
@@ -231,11 +232,44 @@ export interface SlideSection {
   image?: SlideImage;
 }
 
+export type TextBoxAnimationEffect =
+  | 'none'
+  | 'slide-up' // Dưới lên
+  | 'slide-down' // Trên xuống
+  | 'slide-left' // Trái sang
+  | 'slide-right' // Phải sang
+  | 'zoom-in'; // Zoom in
+
+export interface SlideTextBox {
+  id: string;
+  text: string;
+  x?: number; // percentage from left (0 - 100)
+  y?: number; // percentage from top (0 - 100)
+  width?: number; // percentage width (e.g. 35) or px
+  fontSize?: number; // font size in pt, e.g. 20, 24, 28, 32, 36
+  color?: string; // text color e.g. '#ffffff', '#fbbf24', '#38bdf8'
+  backgroundColor?: string; // background fill e.g. 'transparent', '#0f172a', '#ffffff'
+  borderColor?: string; // border color e.g. 'transparent', '#94a3b8'
+  borderWidth?: number; // border width e.g. 0, 1, 2
+  fontWeight?: 'normal' | 'bold';
+  fontStyle?: 'normal' | 'italic';
+  textAlign?: 'left' | 'center' | 'right';
+  isLocked?: boolean;
+  // Animation settings (5 hiệu ứng cơ bản):
+  animation?: TextBoxAnimationEffect;
+  animationDuration?: number; // in seconds, e.g. 0.6
+  animationDelay?: number; // in seconds, e.g. 0.2
+  animationOrder?: number; // order of appearance: 1, 2, 3...
+  isHidden?: boolean; // Ẩn / hiện đối tượng Text Box trên trang chiếu
+}
+
 export interface Slide {
   id: string;
   slideNumber: number;
   // Modular list of blocks on this slide (Primary modular system):
   blocks?: SlideContentBlock[];
+  // PowerPoint Floating Text Boxes:
+  textBoxes?: SlideTextBox[];
 
   // 1. TIÊU ĐỀ BÀI HỌC (optional legacy / header fields)
   title?: string;

@@ -130,7 +130,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
             }`}
           >
             <ShieldCheck className="w-3.5 h-3.5" />
-            <span>Quản Trị Viên (ADMIN)</span>
+            <span>Quản Trị (ADMIN)</span>
           </button>
 
           <button
@@ -167,7 +167,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                 <label className="block text-xs font-bold text-slate-300 mb-1.5 flex items-center justify-between">
                   <span className="flex items-center gap-1.5">
                     <KeyRound className="w-3.5 h-3.5 text-indigo-400" />
-                    Mật Khẩu Quản Trị Viên (ADMIN) *
+                    Mật Khẩu Quản Trị (ADMIN) *
                   </span>
                   <span className="text-[10px] text-purple-400 font-semibold uppercase">
                     Quyền Tối Cao

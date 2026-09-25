@@ -151,7 +151,7 @@ export const LessonLibrary: React.FC<LessonLibraryProps> = ({
           <div className="flex items-center gap-2">
             <h2 className="text-xl sm:text-2xl font-bold text-white flex items-center gap-2.5">
               <FolderSync className="w-6 h-6 text-sky-400" />
-              <span>Kho Bài Giảng</span>
+              <span>Bài Giảng</span>
             </h2>
             <span className="px-3 py-1 rounded-full bg-sky-500/20 text-sky-300 font-bold text-xs border border-sky-500/30">
               {lessons.length} bài giảng
@@ -207,7 +207,7 @@ export const LessonLibrary: React.FC<LessonLibraryProps> = ({
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-indigo-500 to-blue-600 hover:from-indigo-600 hover:to-blue-700 text-white text-xs font-bold shadow-lg shadow-indigo-500/30 transition-all"
           >
             <Plus className="w-4 h-4" />
-            <span>Soạn Bài Mới</span>
+            <span>Soạn Mới</span>
           </button>
         </div>
       </div>

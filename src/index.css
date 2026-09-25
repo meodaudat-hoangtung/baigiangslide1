@@ -110,3 +110,98 @@
     color: #000000 !important;
   }
 }
+
+/* ==========================================================================
+   POWERPOINT TEXT BOX ENTRANCE ANIMATIONS (5 HIỆU ỨNG CƠ BẢN)
+   - Dưới lên (Slide Up)
+   - Trên xuống (Slide Down)
+   - Trái sang (Slide Left-to-Right)
+   - Phải sang (Slide Right-to-Left)
+   - Phóng to (Zoom In)
+   ========================================================================== */
+
+@keyframes tbSlideUp {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 50px, 0);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes tbSlideDown {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, -50px, 0);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes tbSlideLeft {
+  0% {
+    opacity: 0;
+    transform: translate3d(-70px, 0, 0);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes tbSlideRight {
+  0% {
+    opacity: 0;
+    transform: translate3d(70px, 0, 0);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes tbZoomIn {
+  0% {
+    opacity: 0;
+    transform: scale3d(0.2, 0.2, 1);
+  }
+  100% {
+    opacity: 1;
+    transform: scale3d(1, 1, 1);
+  }
+}
+
+.animate-tb-slide-up {
+  animation: tbSlideUp var(--tb-duration, 0.6s) cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: var(--tb-delay, 0s);
+  will-change: transform, opacity;
+}
+
+.animate-tb-slide-down {
+  animation: tbSlideDown var(--tb-duration, 0.6s) cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: var(--tb-delay, 0s);
+  will-change: transform, opacity;
+}
+
+.animate-tb-slide-left {
+  animation: tbSlideLeft var(--tb-duration, 0.6s) cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: var(--tb-delay, 0s);
+  will-change: transform, opacity;
+}
+
+.animate-tb-slide-right {
+  animation: tbSlideRight var(--tb-duration, 0.6s) cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: var(--tb-delay, 0s);
+  will-change: transform, opacity;
+}
+
+.animate-tb-zoom-in {
+  animation: tbZoomIn var(--tb-duration, 0.6s) cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: var(--tb-delay, 0s);
+  will-change: transform, opacity;
+}
+

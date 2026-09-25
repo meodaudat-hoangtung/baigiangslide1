@@ -48,44 +48,46 @@ export const Navbar: React.FC<NavbarProps> = ({
   onLogout,
   onOpenAdminPanel
 }) => {
+  const cleanAdminName = currentUser
+    ? (currentUser.displayName || currentUser.username).replace(/Quản Trị Viên/g, 'Quản Trị')
+    : '';
+
   return (
-    <header className="bg-slate-950/80 backdrop-blur-xl border-b border-slate-800/80 sticky top-0 z-40 shadow-xl transition-all">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
+    <header className="bg-gradient-to-r from-emerald-600 via-green-600 to-teal-600 backdrop-blur-xl border-b border-emerald-400/60 sticky top-0 z-40 shadow-xl shadow-emerald-950/20 transition-all text-white">
+      <div className="w-full px-2 sm:px-4 lg:px-6">
+        <div className="flex items-center justify-between h-16 gap-2 sm:gap-3 flex-nowrap overflow-x-auto custom-scrollbar-none">
           {/* Brand & App Title */}
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-indigo-500 via-blue-600 to-cyan-400 flex items-center justify-center shadow-lg shadow-indigo-500/20 ring-1 ring-white/20 flex-shrink-0">
-              <span className="font-mono font-black text-lg text-white">∑π</span>
+          <div className="flex items-center gap-2.5 shrink-0 whitespace-nowrap">
+            <div className="w-9 h-9 rounded-2xl bg-white/20 backdrop-blur-md border border-white/40 flex items-center justify-center shadow-lg shadow-emerald-900/30 ring-1 ring-white/30 shrink-0">
+              <span className="font-mono font-black text-base text-white">∑π</span>
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-extrabold text-base sm:text-lg tracking-tight bg-gradient-to-r from-white via-slate-100 to-slate-300 bg-clip-text text-transparent">
-                  BÀI GIẢNG TOÁN THPT
-                </span>
-                <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 tracking-wide">
-                  THPT
-                </span>
-              </div>
+            <div className="flex items-center gap-1.5 shrink-0 whitespace-nowrap">
+              <span className="font-extrabold text-sm sm:text-base lg:text-lg tracking-tight text-white drop-shadow-sm whitespace-nowrap">
+                BÀI GIẢNG TOÁN THPT
+              </span>
+              <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full bg-emerald-800/80 text-emerald-100 border border-emerald-300/40 tracking-wide shrink-0 whitespace-nowrap">
+                THPT
+              </span>
             </div>
           </div>
 
           {/* Navigation Tabs */}
-          <nav className="hidden md:flex items-center gap-1.5 bg-slate-900/90 p-1.5 rounded-2xl border border-slate-800 shadow-inner">
+          <nav className="hidden md:flex items-center gap-1.5 bg-emerald-800/70 p-1.5 rounded-2xl border border-emerald-400/40 shadow-inner backdrop-blur-md shrink-0 whitespace-nowrap">
             <button
               onClick={() => setActiveTab('slides')}
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 whitespace-nowrap cursor-pointer ${
                 activeTab === 'slides'
-                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-900/40'
+                  : 'text-emerald-100 hover:text-white hover:bg-emerald-700/60'
               }`}
             >
-              <Presentation className="w-3.5 h-3.5" />
-              <span>Soạn Bài</span>
+              <Presentation className="w-3.5 h-3.5 shrink-0" />
+              <span className="whitespace-nowrap">Soạn</span>
               {currentLesson && (
-                <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full border ${
+                <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full border shrink-0 whitespace-nowrap ${
                   activeTab === 'slides'
                     ? 'bg-indigo-950/90 text-indigo-200 border-indigo-400/40'
-                    : 'bg-slate-800 text-slate-400 border-slate-700'
+                    : 'bg-emerald-900/80 text-emerald-200 border-emerald-500/40'
                 }`}>
                   {currentLesson.slides.length}
                 </span>
@@ -94,19 +96,19 @@ export const Navbar: React.FC<NavbarProps> = ({
 
             <button
               onClick={() => setActiveTab('questions')}
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 whitespace-nowrap cursor-pointer ${
                 activeTab === 'questions'
-                  ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+                  ? 'bg-emerald-950 text-emerald-100 border border-emerald-400/50 shadow-md'
+                  : 'text-emerald-100 hover:text-white hover:bg-emerald-700/60'
               }`}
             >
-              <HelpCircle className="w-3.5 h-3.5" />
-              <span>Câu Hỏi Củng Cố</span>
+              <HelpCircle className="w-3.5 h-3.5 shrink-0" />
+              <span className="whitespace-nowrap">Củng cố</span>
               {currentLesson && (
-                <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full border ${
+                <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full border shrink-0 whitespace-nowrap ${
                   activeTab === 'questions'
-                    ? 'bg-emerald-950/90 text-emerald-200 border-emerald-400/40'
-                    : 'bg-slate-800 text-slate-400 border-slate-700'
+                    ? 'bg-emerald-900 text-emerald-200 border-emerald-400/40'
+                    : 'bg-emerald-900/80 text-emerald-200 border-emerald-500/40'
                 }`}>
                   {currentLesson.questions.length}
                 </span>
@@ -115,19 +117,19 @@ export const Navbar: React.FC<NavbarProps> = ({
 
             <button
               onClick={() => setActiveTab('library')}
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 whitespace-nowrap cursor-pointer ${
                 activeTab === 'library'
-                  ? 'bg-sky-600 text-white shadow-md shadow-sky-600/30'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+                  ? 'bg-sky-600 text-white shadow-md shadow-sky-900/40'
+                  : 'text-emerald-100 hover:text-white hover:bg-emerald-700/60'
               }`}
             >
-              <FolderSync className="w-3.5 h-3.5" />
-              <span>Kho Bài Giảng</span>
+              <FolderSync className="w-3.5 h-3.5 shrink-0" />
+              <span className="whitespace-nowrap">Bài Giảng</span>
             </button>
           </nav>
 
           {/* Action buttons */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap">
             {/* Real-time Storage & Online/Offline Status */}
             <div 
               title={
@@ -137,30 +139,30 @@ export const Navbar: React.FC<NavbarProps> = ({
                     ? 'Đang đồng bộ dữ liệu vào đám mây và ổ đĩa máy chủ...' 
                     : 'Dữ liệu đã lưu an toàn bền vững (Máy & Cloud)'
               }
-              className={`hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-medium transition-colors ${
+              className={`hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-medium transition-colors shrink-0 whitespace-nowrap ${
                 !isOnline
-                  ? 'bg-amber-950/40 border-amber-500/40 text-amber-300'
+                  ? 'bg-amber-950/60 border-amber-400/50 text-amber-200'
                   : isSyncing
-                    ? 'bg-indigo-950/40 border-indigo-500/40 text-indigo-300'
-                    : 'bg-emerald-950/30 border-emerald-500/30 text-emerald-300'
+                    ? 'bg-indigo-950/60 border-indigo-400/50 text-indigo-200'
+                    : 'bg-emerald-800/80 border-emerald-400/50 text-emerald-100 shadow-sm'
               }`}
             >
               {!isOnline ? (
                 <>
-                  <CloudOff className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
-                  <span className="text-[11px]">Đã lưu trên máy (Ngoại tuyến)</span>
-                  <Database className="w-3 h-3 text-amber-400" />
+                  <CloudOff className="w-3.5 h-3.5 text-amber-300 animate-pulse shrink-0" />
+                  <span className="text-[11px] whitespace-nowrap">Đã lưu trên máy (Ngoại tuyến)</span>
+                  <Database className="w-3 h-3 text-amber-300 shrink-0" />
                 </>
               ) : isSyncing ? (
                 <>
-                  <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-400" />
-                  <span className="text-[11px]">Đang lưu dữ liệu...</span>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-300 shrink-0" />
+                  <span className="text-[11px] whitespace-nowrap">Đang lưu dữ liệu...</span>
                 </>
               ) : (
                 <>
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                  <span className="text-[11px]">Đã lưu an toàn (Tự động)</span>
-                  <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-200 shrink-0" />
+                  <span className="text-[11px] font-semibold text-emerald-100 whitespace-nowrap">Đã lưu an toàn</span>
+                  <CheckCircle2 className="w-3 h-3 text-emerald-200 shrink-0" />
                 </>
               )}
             </div>
@@ -170,10 +172,10 @@ export const Navbar: React.FC<NavbarProps> = ({
               <button
                 onClick={onOpenCreateLesson}
                 title="Soạn bài giảng mới"
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-indigo-500 to-blue-600 hover:from-indigo-600 hover:to-blue-700 text-white font-bold text-xs shadow-md shadow-indigo-500/20 transition-all"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-md shadow-emerald-950/20 border border-indigo-400/40 transition-all cursor-pointer hover:scale-105 active:scale-95 shrink-0 whitespace-nowrap"
               >
-                <PlusCircle className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Soạn Bài Mới</span>
+                <PlusCircle className="w-3.5 h-3.5 shrink-0" />
+                <span className="whitespace-nowrap">Soạn Mới</span>
               </button>
             )}
 
@@ -182,44 +184,44 @@ export const Navbar: React.FC<NavbarProps> = ({
               <button
                 onClick={onOpenAdminPanel}
                 title="Quản lý thành viên, cấp mật khẩu & phân quyền hệ thống (Firestore)"
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-950/80 hover:bg-purple-900 border border-purple-500/60 text-purple-200 font-bold text-xs shadow-md shadow-purple-900/30 transition-all"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-950/90 hover:bg-purple-900 border border-purple-400/60 text-purple-100 font-bold text-xs shadow-md shadow-purple-950/30 transition-all cursor-pointer hover:scale-105 active:scale-95 shrink-0 whitespace-nowrap"
               >
-                <Users className="w-3.5 h-3.5 text-purple-400" />
-                <span className="hidden md:inline">Quản Trị Viên</span>
+                <Users className="w-3.5 h-3.5 text-purple-300 shrink-0" />
+                <span className="whitespace-nowrap">Quản Trị</span>
               </button>
             )}
 
             {/* Auth / Account Profile */}
             {currentUser ? (
-              <div className="flex items-center gap-2 pl-1 border-l border-slate-800">
+              <div className="flex items-center gap-2 pl-1 border-l border-emerald-400/40 shrink-0 whitespace-nowrap">
                 <div
-                  title={`Đang đăng nhập: ${currentUser.displayName || currentUser.username} (${currentUser.role === 'admin' ? 'Quản trị viên tối cao' : 'Thành viên giáo viên'})\nEmail: ${currentUser.email}`}
-                  className="flex items-center gap-2 px-2 py-1 rounded-xl bg-slate-900/80 border border-slate-800 text-xs"
+                  title={`Đang đăng nhập: ${cleanAdminName} (${currentUser.role === 'admin' ? 'Quản trị viên tối cao' : 'Thành viên giáo viên'})\nEmail: ${currentUser.email}`}
+                  className="flex items-center gap-2 px-2 py-1 rounded-xl bg-emerald-800/80 border border-emerald-400/40 text-xs text-white shrink-0 whitespace-nowrap"
                 >
                   {currentUser.photoURL ? (
                     <img
                       src={currentUser.photoURL}
                       alt={currentUser.displayName}
                       referrerPolicy="no-referrer"
-                      className="w-6 h-6 rounded-full border border-indigo-500/50 object-cover"
+                      className="w-6 h-6 rounded-full border border-white/50 object-cover shrink-0"
                     />
                   ) : (
-                    <div className={`w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs ${
+                    <div className={`w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs shrink-0 ${
                       currentUser.role === 'admin'
-                        ? 'bg-purple-900/50 text-purple-300 border border-purple-500/40'
-                        : 'bg-indigo-900/50 text-indigo-300 border border-indigo-500/40'
+                        ? 'bg-purple-900 text-purple-200 border border-purple-400/50'
+                        : 'bg-emerald-900 text-emerald-200 border border-emerald-400/50'
                     }`}>
                       {currentUser.displayName?.charAt(0)?.toUpperCase() || 'U'}
                     </div>
                   )}
-                  <div className="hidden lg:flex flex-col text-left leading-none">
-                    <span className="font-bold text-slate-200 text-[11px] max-w-[110px] truncate">
-                      {currentUser.displayName || currentUser.username}
+                  <div className="hidden lg:flex flex-col text-left leading-none shrink-0 whitespace-nowrap">
+                    <span className="font-bold text-white text-[11px] max-w-[120px] truncate whitespace-nowrap">
+                      {cleanAdminName}
                     </span>
-                    <span className={`text-[9px] font-semibold mt-0.5 ${
-                      currentUser.role === 'admin' ? 'text-purple-400' : 'text-indigo-400'
+                    <span className={`text-[9px] font-semibold mt-0.5 whitespace-nowrap ${
+                      currentUser.role === 'admin' ? 'text-purple-200' : 'text-emerald-200'
                     }`}>
-                      {currentUser.role === 'admin' ? 'Quản Trị Viên' : 'Thành Viên'}
+                      {currentUser.role === 'admin' ? 'Quản Trị' : 'Thành Viên'}
                     </span>
                   </div>
                 </div>
@@ -227,7 +229,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <button
                   onClick={onLogout}
                   title="Đăng xuất khỏi hệ thống"
-                  className="p-1.5 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-rose-950/30 transition-colors"
+                  className="p-1.5 rounded-xl text-emerald-100 hover:text-rose-200 hover:bg-rose-950/40 transition-colors cursor-pointer shrink-0"
                 >
                   <LogOut className="w-4 h-4" />
                 </button>
@@ -236,19 +238,18 @@ export const Navbar: React.FC<NavbarProps> = ({
               <button
                 onClick={onLogin}
                 title="Đăng nhập tài khoản Quản trị viên hoặc Thành viên"
-                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-md shadow-indigo-600/20 transition-all"
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-white hover:bg-emerald-50 text-emerald-900 font-extrabold text-xs shadow-md shadow-emerald-950/20 border border-white transition-all cursor-pointer hover:scale-105 active:scale-95 shrink-0 whitespace-nowrap"
               >
-                <LogIn className="w-3.5 h-3.5" />
-                <span>Đăng Nhập</span>
+                <LogIn className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                <span className="whitespace-nowrap">Đăng Nhập</span>
               </button>
             )}
-
 
             {/* Present Fullscreen */}
             <button
               onClick={onToggleFullscreen}
               title="Trình chiếu toàn màn hình"
-              className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800 transition-colors"
+              className="p-2 rounded-xl bg-emerald-800/80 hover:bg-emerald-700 text-emerald-100 hover:text-white border border-emerald-400/40 transition-colors cursor-pointer shrink-0"
             >
               <Maximize2 className="w-4 h-4" />
             </button>
@@ -257,30 +258,30 @@ export const Navbar: React.FC<NavbarProps> = ({
       </div>
 
       {/* Mobile Tab Bar */}
-      <div className="md:hidden flex border-t border-slate-800/80 bg-slate-950/95 overflow-x-auto p-1.5 gap-1">
+      <div className="md:hidden flex border-t border-emerald-500/60 bg-emerald-700 overflow-x-auto p-1.5 gap-1 text-white">
         <button
           onClick={() => setActiveTab('slides')}
           className={`flex-1 py-1.5 px-2 text-center text-xs font-bold rounded-xl whitespace-nowrap ${
-            activeTab === 'slides' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400'
+            activeTab === 'slides' ? 'bg-indigo-600 text-white shadow' : 'text-emerald-100'
           }`}
         >
-          Soạn Bài
+          Soạn
         </button>
         <button
           onClick={() => setActiveTab('questions')}
           className={`flex-1 py-1.5 px-2 text-center text-xs font-bold rounded-xl whitespace-nowrap ${
-            activeTab === 'questions' ? 'bg-emerald-600 text-white shadow' : 'text-slate-400'
+            activeTab === 'questions' ? 'bg-emerald-900 text-white shadow' : 'text-emerald-100'
           }`}
         >
-          Câu Hỏi Củng Cố ({currentLesson?.questions.length || 0})
+          Củng cố ({currentLesson?.questions.length || 0})
         </button>
         <button
           onClick={() => setActiveTab('library')}
           className={`flex-1 py-1.5 px-2 text-center text-xs font-bold rounded-xl whitespace-nowrap ${
-            activeTab === 'library' ? 'bg-sky-600 text-white shadow' : 'text-slate-400'
+            activeTab === 'library' ? 'bg-sky-600 text-white shadow' : 'text-emerald-100'
           }`}
         >
-          Kho Bài Giảng
+          Bài Giảng
         </button>
       </div>
     </header>

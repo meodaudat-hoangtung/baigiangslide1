@@ -2,7 +2,8 @@ import React, { useMemo } from 'react';
 import katex from 'katex';
 
 interface MathViewProps {
-  content: string | undefined | null;
+  content?: string | undefined | null;
+  text?: string | undefined | null;
   className?: string;
   block?: boolean;
   inline?: boolean;
@@ -23,27 +24,31 @@ const KATEX_MACROS = {
 /**
  * Renders text containing LaTeX / KaTeX / MathJax formulas and markdown styling.
  * Supports:
+ * - content or text prop interchangeably
  * - $...$ and \(...\) for inline math
  * - $$...$$ and \[...\] and \begin{...}...\end{...} for block formulas
+ * - Automatic detection of raw LaTeX macros (e.g. \frac, \sqrt, \pm, \alpha, \sum) even without $ delimiters
  * - Markdown bold (**text**), italics (*text*), code (`code`)
  * - Resilient error fallback without crashing
  */
 export const MathView: React.FC<MathViewProps> = ({
   content,
+  text: textProp,
   className = '',
   block = false,
   inline = false,
   as,
 }) => {
   const Tag = as || (inline ? 'span' : 'div');
+  const actualContent = content !== undefined && content !== null ? content : textProp;
 
   const renderedHtml = useMemo(() => {
-    if (!content) return '';
+    if (!actualContent) return '';
 
     // If block prop is set and the whole string is a formula without delimiters
-    if (block && !content.includes('$') && !content.includes('\\(') && !content.includes('\\[')) {
+    if (block && !actualContent.includes('$') && !actualContent.includes('\\(') && !actualContent.includes('\\[')) {
       try {
-        return katex.renderToString(content.trim(), {
+        return katex.renderToString(actualContent.trim(), {
           displayMode: true,
           throwOnError: false,
           trust: true,
@@ -51,7 +56,18 @@ export const MathView: React.FC<MathViewProps> = ({
           macros: KATEX_MACROS,
         });
       } catch {
-        return content;
+        return actualContent;
+      }
+    }
+
+    // Auto-wrap raw LaTeX commands like \frac, \sqrt, \alpha if user didn't write $...$
+    let processedContent = actualContent;
+    if (!processedContent.includes('$') && !processedContent.includes('\\(') && !processedContent.includes('\\[')) {
+      // Check if text starts with or heavily contains LaTeX math commands
+      const hasMathCmd = /\\(frac|dfrac|sqrt|pm|times|div|cdot|alpha|beta|gamma|theta|pi|Delta|omega|sigma|int|sum|prod|lim|infty|ge|le|neq|approx|equiv|forall|exists|in|subset|cup|cap|vec|vect|degree)/.test(processedContent);
+      if (hasMathCmd) {
+        // If entire text looks like a math expression, wrap in $
+        processedContent = `$${processedContent}$`;
       }
     }
 
@@ -66,7 +82,7 @@ export const MathView: React.FC<MathViewProps> = ({
     // 5. $ ... $ (inline)
     const MATH_REGEX = /(\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\]|\\begin\{(?:matrix|pmatrix|bmatrix|vmatrix|Vmatrix|cases|align|aligned|array|gather|gathered|split)\}[\s\S]*?\\end\{(?:matrix|pmatrix|bmatrix|vmatrix|Vmatrix|cases|align|aligned|array|gather|gathered|split)\}|\\\([\s\S]*?\\\)|\$[^\$\n]+?\$)/g;
 
-    let text = content.replace(MATH_REGEX, (match) => {
+    let text = processedContent.replace(MATH_REGEX, (match) => {
       let mathStr = '';
       let isDisplay = false;
 
