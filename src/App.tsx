@@ -699,6 +699,11 @@ export default function App() {
       {/* Top Navigation */}
       <Navbar
         currentLesson={currentLesson}
+        lessons={lessons}
+        onSelectLesson={(l) => {
+          handleSelectLessonId(l.id);
+          handleChangeTab('slides');
+        }}
         activeTab={activeTab}
         setActiveTab={handleChangeTab}
         onOpenUpload={() => setIsUploadModalOpen(true)}

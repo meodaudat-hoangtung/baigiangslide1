@@ -358,13 +358,16 @@ export interface GenerationConfig {
   numEssay: number;
   targetGrade: string; // e.g. "Toán 10 - Kết Nối Tri Thức"
   focusTopic?: string;
-  teachingGoal: 'standard' | 'exam_prep' | 'concept_mastery' | 'advanced';
+  teachingGoal: 'standard' | 'exam_prep' | 'concept_mastery' | 'advanced' | 'quick_review';
 }
 
 export interface MathLesson {
   id: string;
   title: string;
   grade: string;
+  gradeLevel?: string; // Khối lớp: "Lớp 6" ... "Lớp 12"
+  subject?: string;    // Môn học: "Toán học", "Ngữ văn", "Vật lí", ...
+  author?: string;     // Tác giả soạn giảng (Họ và tên người soạn)
   chapterOrTopic: string;
   createdAt: number;
   updatedAt: number;

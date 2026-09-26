@@ -2,12 +2,15 @@
   "entities": {
     "MathLesson": {
       "title": "MathLesson",
-      "description": "High school math lesson containing slides and quiz questions",
+      "description": "School lesson containing slides and quiz questions for grades 6 to 12",
       "type": "object",
       "properties": {
         "id": { "type": "string", "description": "Unique lesson identifier" },
         "title": { "type": "string", "description": "Lesson title" },
-        "grade": { "type": "string", "description": "Grade level (10, 11, 12)" },
+        "grade": { "type": "string", "description": "Grade and subject display string" },
+        "gradeLevel": { "type": "string", "description": "Grade level from Lớp 6 to Lớp 12" },
+        "subject": { "type": "string", "description": "Subject name for grades 6 to 12" },
+        "author": { "type": "string", "description": "Full name of the teacher who authored the lesson" },
         "chapter": { "type": "string", "description": "Chapter name" },
         "createdAt": { "type": "number", "description": "Creation timestamp" },
         "updatedAt": { "type": "number", "description": "Last update timestamp" }

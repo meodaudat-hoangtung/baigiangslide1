@@ -75,22 +75,22 @@ export const EmptyLessonState: React.FC<EmptyLessonStateProps> = ({
         <div className="space-y-2">
           <h3 className="font-bold text-xl text-white">Soạn Bài Giảng Mới</h3>
           <p className="text-xs sm:text-sm text-slate-300 max-w-md mx-auto leading-relaxed">
-            Thiết lập tiêu đề bài học, khối lớp (Toán 6 – 12), chương mục và tự động khởi tạo khung slide sư phạm kèm hệ thống câu hỏi củng cố.
+            Tùy chỉnh khối lớp (Lớp 6 – Lớp 12), đầy đủ các môn học, điền tác giả soạn giảng và khởi tạo khung slide sư phạm kèm câu hỏi củng cố.
           </p>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-left pt-3 border-t border-slate-800/80 max-w-lg mx-auto">
           <div className="flex items-start gap-2 text-xs text-slate-300">
             <CheckCircle2 className="w-4 h-4 text-indigo-400 flex-shrink-0 mt-0.5" />
-            <span>Gợi ý tên bài theo SGK mới</span>
+            <span>Đủ khối lớp 6 – 12 & các môn</span>
           </div>
           <div className="flex items-start gap-2 text-xs text-slate-300">
             <CheckCircle2 className="w-4 h-4 text-indigo-400 flex-shrink-0 mt-0.5" />
-            <span>Công thức Toán LaTeX chuẩn</span>
+            <span>Công thức LaTeX & Đa phương tiện</span>
           </div>
           <div className="flex items-start gap-2 text-xs text-slate-300">
             <CheckCircle2 className="w-4 h-4 text-indigo-400 flex-shrink-0 mt-0.5" />
-            <span>Lưu trữ đa tầng an toàn</span>
+            <span>Lưu trữ đa tầng thời gian thực</span>
           </div>
         </div>
 

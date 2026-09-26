@@ -789,6 +789,29 @@ export const PowerPointWorkspace: React.FC<PowerPointWorkspaceProps> = ({
                   <ZoomIn className="w-3.5 h-3.5" />
                 </button>
               </div>
+
+              {/* Thông tin nhanh bài giảng đang soạn (Lớp, Môn, Tác giả) */}
+              <div className="hidden xl:flex items-center gap-1.5 text-xs text-slate-600 pl-2 border-l border-slate-300 max-w-md truncate">
+                <span className="font-bold text-indigo-700 shrink-0">
+                  {lesson.gradeLevel || lesson.grade}
+                </span>
+                {lesson.subject && (
+                  <>
+                    <span className="text-slate-400">·</span>
+                    <span className="font-semibold text-emerald-700 shrink-0">
+                      {lesson.subject}
+                    </span>
+                  </>
+                )}
+                {lesson.author && (
+                  <>
+                    <span className="text-slate-400">·</span>
+                    <span className="font-medium text-slate-700 truncate">
+                      GV: {lesson.author}
+                    </span>
+                  </>
+                )}
+              </div>
             </div>
 
             {/* Right: Chèn Ảnh, Video / Âm Thanh, Text Box đứng cạnh "Công cụ", Fullscreen TV, Print */}
