@@ -1,11 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Printer, X } from 'lucide-react';
-import { MathLesson, Slide } from '../types';
+import { MathLesson, Slide, AppUser } from '../types';
 import { PowerPointWorkspace } from './PowerPointWorkspace';
 import { MathView } from './MathView';
+import { canEditLesson } from '../utils/permissions';
 
 interface StudioWorkspaceProps {
   lesson: MathLesson;
+  currentUser?: AppUser | null;
+  onPresentLesson?: () => void;
   onUpdateSlide: (updatedSlide: Slide) => void;
   onDeleteSlide: (slideId: string) => void;
   onAddSlide: (newSlide: Slide, insertAfterIndex?: number) => void;
@@ -13,12 +16,15 @@ interface StudioWorkspaceProps {
 
 export const StudioWorkspace: React.FC<StudioWorkspaceProps> = ({
   lesson,
+  currentUser = null,
   onUpdateSlide,
   onDeleteSlide,
   onAddSlide,
 }) => {
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
   const [showPrintModal, setShowPrintModal] = useState(false);
+
+  const isReadOnly = !canEditLesson(lesson, currentUser);
 
   // Safety check on current slide
   const safeIndex = Math.min(
@@ -42,10 +48,18 @@ export const StudioWorkspace: React.FC<StudioWorkspaceProps> = ({
       <PowerPointWorkspace
         lesson={lesson}
         currentSlideIndex={safeIndex}
+        readOnly={isReadOnly}
+        currentUser={currentUser}
         onSelectSlide={handleSelectSlide}
-        onUpdateSlide={onUpdateSlide}
-        onDeleteSlide={onDeleteSlide}
-        onAddSlide={onAddSlide}
+        onUpdateSlide={(s) => {
+          if (!isReadOnly) onUpdateSlide(s);
+        }}
+        onDeleteSlide={(id) => {
+          if (!isReadOnly) onDeleteSlide(id);
+        }}
+        onAddSlide={(s, idx) => {
+          if (!isReadOnly) onAddSlide(s, idx);
+        }}
         onOpenPrintView={() => setShowPrintModal(true)}
       />
 

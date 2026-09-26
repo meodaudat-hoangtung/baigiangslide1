@@ -292,11 +292,19 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                 </div>
               </div>
 
-              <div className="p-3 rounded-xl bg-slate-950/50 border border-slate-800/80 text-[11px] text-slate-400 space-y-1">
-                <p className="text-slate-300 font-medium">Bạn chưa có tài khoản thành viên?</p>
-                <p>
-                  Vui lòng cung cấp <strong>Gmail</strong> và <strong>Số điện thoại</strong> cho Quản trị viên (ADMIN) để được tạo tên đăng nhập cùng mật khẩu.
+              <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800/80 text-[11px] text-slate-400 space-y-1.5">
+                <p className="text-indigo-300 font-bold flex items-center gap-1.5">
+                  <ShieldCheck className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                  <span>Quyền năng của Thành Viên khi đăng nhập:</span>
                 </p>
+                <ul className="space-y-1 pl-4 list-disc text-slate-300">
+                  <li>Được quyền <strong>Soạn bài giảng mới</strong>, <strong>soạn câu hỏi củng cố mới</strong>.</li>
+                  <li>Được quyền <strong>xóa bài giảng</strong> và <strong>câu hỏi củng cố</strong> do chính mình soạn.</li>
+                  <li>Được quyền <strong>trình chiếu</strong> các bài do mình soạn và do thành viên khác soạn.</li>
+                  <li className="text-amber-300/90">
+                    <strong>Bảo vệ an toàn dữ liệu:</strong> Thành viên không có quyền chỉnh sửa hoặc xóa bất kỳ bài giảng, slide hay câu hỏi củng cố nào do người khác soạn.
+                  </li>
+                </ul>
               </div>
 
               <button

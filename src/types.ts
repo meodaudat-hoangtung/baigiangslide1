@@ -45,6 +45,10 @@ export interface Question {
   essayRubric?: EssayRubric; // essay
   detailedSolution: string; // Detailed step-by-step solution with math formulas
   hint?: string;
+  // Ownership fields (Bảo vệ dữ liệu người soạn câu hỏi củng cố):
+  createdByUid?: string;
+  createdByUsername?: string;
+  createdByName?: string;
 }
 
 export interface SlideImage {
@@ -293,6 +297,9 @@ export interface Slide {
   suggestedDurationMin?: number;
   images?: SlideImage[];
   styleConfig?: SlideStyleConfig;
+  // Ownership fields (Bảo vệ dữ liệu người tạo slide):
+  createdByUid?: string;
+  createdByName?: string;
 }
 
 export interface CoreConcept {
@@ -368,6 +375,10 @@ export interface MathLesson {
   gradeLevel?: string; // Khối lớp: "Lớp 6" ... "Lớp 12"
   subject?: string;    // Môn học: "Toán học", "Ngữ văn", "Vật lí", ...
   author?: string;     // Tác giả soạn giảng (Họ và tên người soạn)
+  createdByUid?: string;      // UID của tài khoản đã tạo bài giảng
+  createdByUsername?: string; // Tên đăng nhập của người tạo bài giảng
+  createdByEmail?: string;    // Email của người tạo bài giảng
+  createdByRole?: UserRole;   // Vai trò người tạo ('admin' | 'member')
   chapterOrTopic: string;
   createdAt: number;
   updatedAt: number;

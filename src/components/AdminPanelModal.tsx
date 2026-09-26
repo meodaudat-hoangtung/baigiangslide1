@@ -167,12 +167,8 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
   // Create new member submit
   const handleCreateMemberSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newEmail.trim() || !newPhone.trim()) {
-      setFeedbackMsg({ text: 'Vui lòng cung cấp cả Gmail và Số điện thoại của thành viên.', type: 'error' });
-      return;
-    }
     if (!newUsername.trim() || !newPassword.trim()) {
-      setFeedbackMsg({ text: 'Vui lòng thiết lập Tên đăng nhập và Mật khẩu cho thành viên.', type: 'error' });
+      setFeedbackMsg({ text: 'Vui lòng thiết lập Tên đăng nhập (Tài khoản) và Mật khẩu cho thành viên mới.', type: 'error' });
       return;
     }
 
@@ -183,7 +179,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
         password: newPassword,
         email: newEmail,
         phone: newPhone,
-        displayName: newName || 'Giáo viên ' + newUsername,
+        displayName: newName || 'Thành viên ' + newUsername,
         role: 'member',
         status: 'active',
         notes: newNotes
@@ -692,11 +688,44 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
               <div>
                 <h3 className="text-base font-bold text-white flex items-center gap-2">
                   <UserPlus className="w-5 h-5 text-indigo-400" />
-                  <span>Cấp Tài Khoản Thành Viên Cho Giáo Viên</span>
+                  <span>Cấp Tài Khoản & Mật Khẩu Cho Thành Viên Mới</span>
                 </h3>
                 <p className="text-xs text-slate-400 mt-1">
-                  Nhập thông tin Gmail và Số điện thoại do giáo viên cung cấp, sau đó chỉ định Tên đăng nhập cùng Mật khẩu để họ truy cập hệ thống.
+                  Quản trị viên (ADMIN) trực tiếp tạo Tài khoản & Mật khẩu cho thành viên mới. Hệ thống tự động áp dụng cơ chế phân quyền bảo vệ an toàn dữ liệu.
                 </p>
+              </div>
+
+              {/* Bảng Quy Định Phân Quyền Thành Viên Mới (Đảm bảo an toàn dữ liệu) */}
+              <div className="p-4 rounded-2xl bg-slate-950/80 border border-indigo-500/30 space-y-3 text-xs">
+                <div className="font-bold text-indigo-300 flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-indigo-400 shrink-0" />
+                  <span>Chính Sách Phân Quyền Thành Viên Mới (Tự động áp dụng khi đăng nhập)</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="p-3 rounded-xl bg-emerald-950/30 border border-emerald-500/30 space-y-1.5">
+                    <div className="font-bold text-emerald-300 flex items-center gap-1.5">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                      <span>Quyền Được Phép (Khi đã đăng nhập):</span>
+                    </div>
+                    <ul className="text-[11px] text-slate-300 space-y-1 pl-4 list-disc">
+                      <li>Có quyền <strong>Soạn bài giảng mới</strong> và <strong>câu hỏi củng cố mới</strong>.</li>
+                      <li>Có quyền <strong>chỉnh sửa & xóa</strong> bài giảng, slide và câu hỏi củng cố do <strong>chính họ soạn</strong>.</li>
+                      <li>Có quyền <strong>trình chiếu</strong> các bài giảng do họ soạn và do thành viên khác soạn.</li>
+                    </ul>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-rose-950/30 border border-rose-500/30 space-y-1.5">
+                    <div className="font-bold text-rose-300 flex items-center gap-1.5">
+                      <AlertTriangle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                      <span>Giới Hạn Bảo Vệ An Toàn Dữ Liệu:</span>
+                    </div>
+                    <ul className="text-[11px] text-slate-300 space-y-1 pl-4 list-disc">
+                      <li><strong>Không có quyền chỉnh sửa</strong> bất kỳ bài soạn hay slide nào do người khác tạo.</li>
+                      <li><strong>Không có quyền xóa</strong> bất kỳ bài giảng, slide hay câu hỏi củng cố nào do người khác soạn.</li>
+                      <li>Chỉ <strong>Admin cao nhất</strong> mới có toàn quyền quyết định trên toàn hệ thống.</li>
+                    </ul>
+                  </div>
+                </div>
               </div>
 
               {/* Success Banner if just created */}
@@ -705,7 +734,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-emerald-300 flex items-center gap-1.5">
                       <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                      Tài khoản đã tạo thành công và lưu lên Firestore!
+                      Tài khoản thành viên mới đã tạo thành công và lưu lên hệ thống!
                     </span>
                     <button
                       onClick={() => setCreatedSuccessInfo(null)}
@@ -717,83 +746,37 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
 
                   <div className="p-3 bg-slate-900/90 rounded-xl border border-emerald-900/60 font-mono text-xs space-y-1">
                     <p className="text-slate-300">
-                      • Tên đăng nhập: <strong className="text-white">{createdSuccessInfo.username}</strong>
+                      • Họ tên: <strong className="text-white">{createdSuccessInfo.displayName}</strong>
+                    </p>
+                    <p className="text-slate-300">
+                      • Tài khoản (Tên đăng nhập): <strong className="text-emerald-300">{createdSuccessInfo.username}</strong>
                     </p>
                     <p className="text-slate-300">
                       • Mật khẩu: <strong className="text-amber-300">{createdSuccessInfo.password}</strong>
-                    </p>
-                    <p className="text-slate-300">
-                      • Gmail: {createdSuccessInfo.email} | SĐT: {createdSuccessInfo.phone}
                     </p>
                   </div>
 
                   <button
                     type="button"
                     onClick={() => {
-                      const text = `🔔 THÔNG TIN TÀI KHOẢN SOẠN BÀI TOÁN HỌC:\n• Trang web: ${window.location.origin}\n• Tên đăng nhập: ${createdSuccessInfo.username}\n• Mật khẩu: ${createdSuccessInfo.password}\n• Gmail đăng ký: ${createdSuccessInfo.email}\n• Số điện thoại: ${createdSuccessInfo.phone}\n(Vui lòng đăng nhập tại mục "Thành Viên" để bắt đầu soạn bài)`;
+                      const text = `🔔 THÔNG TIN TÀI KHOẢN THÀNH VIÊN:\n• Trang web: ${window.location.origin}\n• Tài khoản đăng nhập: ${createdSuccessInfo.username}\n• Mật khẩu: ${createdSuccessInfo.password}\n• Họ tên: ${createdSuccessInfo.displayName}\n(Vui lòng đăng nhập tại mục "Thành Viên" để sử dụng hệ thống)`;
                       copyToClipboard(text);
                     }}
                     className="w-full py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-md transition-all"
                   >
                     <Copy className="w-3.5 h-3.5" />
-                    <span>Sao Chép Thông Tin Này Gửi Ngay Cho Giáo Viên</span>
+                    <span>Sao Chép Tài Khoản & Mật Khẩu Gửi Cho Thành Viên</span>
                   </button>
                 </div>
               )}
 
               <form onSubmit={handleCreateMemberSubmit} className="space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {/* Gmail (Required) */}
-                  <div>
-                    <label className="block text-xs font-bold text-slate-300 mb-1.5 flex items-center gap-1.5">
-                      <Mail className="w-3.5 h-3.5 text-indigo-400" />
-                      <span>Gmail Giáo Viên Cung Cấp *</span>
-                    </label>
-                    <input
-                      type="email"
-                      required
-                      placeholder="thaynam@gmail.com"
-                      value={newEmail}
-                      onChange={(e) => setNewEmail(e.target.value)}
-                      className="w-full px-3.5 py-2.5 bg-slate-950/70 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
-                    />
-                  </div>
-
-                  {/* Phone (Required) */}
-                  <div>
-                    <label className="block text-xs font-bold text-slate-300 mb-1.5 flex items-center gap-1.5">
-                      <Phone className="w-3.5 h-3.5 text-indigo-400" />
-                      <span>Số Điện Thoại Cung Cấp *</span>
-                    </label>
-                    <input
-                      type="tel"
-                      required
-                      placeholder="0912345678"
-                      value={newPhone}
-                      onChange={(e) => setNewPhone(e.target.value)}
-                      className="w-full px-3.5 py-2.5 bg-slate-950/70 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
-                    />
-                  </div>
-
-                  {/* Full Name */}
-                  <div className="sm:col-span-2">
-                    <label className="block text-xs font-bold text-slate-300 mb-1.5">
-                      Họ và Tên Giáo Viên
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="Thầy Nguyễn Văn Nam (hoặc Cô Lê Thị Lan)"
-                      value={newName}
-                      onChange={(e) => setNewName(e.target.value)}
-                      className="w-full px-3.5 py-2.5 bg-slate-950/70 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
-                    />
-                  </div>
-
-                  {/* Username */}
+                  {/* Username (Required) */}
                   <div>
                     <div className="flex items-center justify-between mb-1.5">
-                      <label className="text-xs font-bold text-slate-300">
-                        Tên Đăng Nhập Do ADMIN Tạo *
+                      <label className="text-xs font-bold text-slate-200">
+                        1. Tài Khoản (Tên Đăng Nhập) *
                       </label>
                       <button
                         type="button"
@@ -806,18 +789,18 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                     <input
                       type="text"
                       required
-                      placeholder="thaynam_toan"
+                      placeholder="Nhập tên tài khoản (VD: gv_nguyenvana)"
                       value={newUsername}
                       onChange={(e) => setNewUsername(e.target.value.toLowerCase().replace(/\s+/g, ''))}
-                      className="w-full px-3.5 py-2.5 bg-slate-950/70 border border-slate-800 rounded-xl text-xs text-white font-mono placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                      className="w-full px-3.5 py-2.5 bg-slate-950/70 border border-indigo-500/50 rounded-xl text-xs text-white font-mono placeholder-slate-500 focus:outline-none focus:border-indigo-400"
                     />
                   </div>
 
-                  {/* Password */}
+                  {/* Password (Required) */}
                   <div>
                     <div className="flex items-center justify-between mb-1.5">
-                      <label className="text-xs font-bold text-slate-300">
-                        Mật Khẩu Do ADMIN Tạo *
+                      <label className="text-xs font-bold text-slate-200">
+                        2. Mật Khẩu Do ADMIN Cấp *
                       </label>
                       <button
                         type="button"
@@ -830,21 +813,65 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                     <input
                       type="text"
                       required
-                      placeholder="Nhập mật khẩu cho giáo viên"
+                      placeholder="Nhập mật khẩu cấp cho thành viên"
                       value={newPassword}
                       onChange={(e) => setNewPassword(e.target.value)}
-                      className="w-full px-3.5 py-2.5 bg-slate-950/70 border border-slate-800 rounded-xl text-xs text-white font-mono placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                      className="w-full px-3.5 py-2.5 bg-slate-950/70 border border-indigo-500/50 rounded-xl text-xs text-white font-mono placeholder-slate-500 focus:outline-none focus:border-indigo-400"
+                    />
+                  </div>
+
+                  {/* Full Name */}
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-bold text-slate-300 mb-1.5">
+                      3. Họ và Tên Thành Viên (Hiển thị làm Tác giả soạn giảng)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Ví dụ: Thầy Nguyễn Văn Nam (hoặc Cô Lê Thị Lan)"
+                      value={newName}
+                      onChange={(e) => setNewName(e.target.value)}
+                      className="w-full px-3.5 py-2.5 bg-slate-950/70 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                    />
+                  </div>
+
+                  {/* Gmail (Optional) */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 mb-1.5 flex items-center gap-1.5">
+                      <Mail className="w-3.5 h-3.5 text-indigo-400" />
+                      <span>Gmail Liên Hệ (Tùy chọn)</span>
+                    </label>
+                    <input
+                      type="email"
+                      placeholder="thaynam@gmail.com (không bắt buộc)"
+                      value={newEmail}
+                      onChange={(e) => setNewEmail(e.target.value)}
+                      className="w-full px-3.5 py-2.5 bg-slate-950/70 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                    />
+                  </div>
+
+                  {/* Phone (Optional) */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 mb-1.5 flex items-center gap-1.5">
+                      <Phone className="w-3.5 h-3.5 text-indigo-400" />
+                      <span>Số Điện Thoại (Tùy chọn)</span>
+                    </label>
+                    <input
+                      type="tel"
+                      placeholder="0912345678 (không bắt buộc)"
+                      value={newPhone}
+                      onChange={(e) => setNewPhone(e.target.value)}
+                      className="w-full px-3.5 py-2.5 bg-slate-950/70 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
                     />
                   </div>
 
                   {/* Notes */}
                   <div className="sm:col-span-2">
                     <label className="block text-xs font-bold text-slate-300 mb-1.5">
-                      Ghi Chú Nội Bộ (Trường học / Khối lớp phụ trách)
+                      Ghi Chú Nội Bộ (Tổ bộ môn / Khối lớp phụ trách)
                     </label>
                     <input
                       type="text"
-                      placeholder="Ví dụ: THPT Chuyên, Toán 10 & 11"
+                      placeholder="Ví dụ: Tổ Toán - Tin, Phụ trách Khối 10 & 11"
                       value={newNotes}
                       onChange={(e) => setNewNotes(e.target.value)}
                       className="w-full px-3.5 py-2.5 bg-slate-950/70 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"

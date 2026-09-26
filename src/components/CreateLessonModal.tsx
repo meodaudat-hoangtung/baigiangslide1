@@ -13,27 +13,37 @@ import {
   AlertCircle,
   Check
 } from 'lucide-react';
-import { MathLesson, Slide, Question, LessonSummary } from '../types';
+import { MathLesson, Slide, Question, LessonSummary, AppUser } from '../types';
 import { GRADE_OPTIONS, SUBJECT_OPTIONS } from '../constants/curriculum';
+import { stampNewLessonOwnership } from '../utils/permissions';
 
 interface CreateLessonModalProps {
   isOpen: boolean;
   onClose: () => void;
   onCreateLesson: (newLesson: MathLesson) => void;
+  currentUser?: AppUser | null;
 }
 
 export const CreateLessonModal: React.FC<CreateLessonModalProps> = ({
   isOpen,
   onClose,
   onCreateLesson,
+  currentUser,
 }) => {
   const [selectedGrade, setSelectedGrade] = useState<string>('Lớp 10');
   const [selectedSubject, setSelectedSubject] = useState<string>('Toán học');
-  const [author, setAuthor] = useState<string>('');
+  const [author, setAuthor] = useState<string>(() => currentUser?.displayName || currentUser?.username || '');
   const [title, setTitle] = useState<string>('');
   const [chapterOrTopic, setChapterOrTopic] = useState<string>('');
   const [templateStructure, setTemplateStructure] = useState<'standard' | 'minimal'>('standard');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Sync default author when modal opens if empty
+  useEffect(() => {
+    if (isOpen && !author.trim() && currentUser) {
+      setAuthor(currentUser.displayName || currentUser.username || '');
+    }
+  }, [isOpen, currentUser]);
 
   // Dropdown open states
   const [isGradeDropdownOpen, setIsGradeDropdownOpen] = useState<boolean>(false);
@@ -342,30 +352,33 @@ export const CreateLessonModal: React.FC<CreateLessonModalProps> = ({
       wrapUpFlashcards: [],
     };
 
-    const newLesson: MathLesson = {
-      id: lessonId,
-      title: cleanTitle,
-      grade: combinedGradeDisplay,
-      gradeLevel: selectedGrade,
-      subject: selectedSubject,
-      author: cleanAuthor || undefined,
-      chapterOrTopic: cleanChapter,
-      createdAt: timestamp,
-      updatedAt: timestamp,
-      sourceImageCount: 0,
-      slides: initialSlides,
-      questions: initialQuestions,
-      summary: initialSummary,
-      config: {
-        totalQuestions: initialQuestions.length,
-        numMultipleChoice: 1,
-        numTrueFalse: 1,
-        numShortAnswer: 0,
-        numEssay: 0,
-        targetGrade: combinedGradeDisplay,
-        teachingGoal: 'concept_mastery',
+    const newLesson = stampNewLessonOwnership(
+      {
+        id: lessonId,
+        title: cleanTitle,
+        grade: combinedGradeDisplay,
+        gradeLevel: selectedGrade,
+        subject: selectedSubject,
+        author: cleanAuthor || currentUser?.displayName || currentUser?.username || undefined,
+        chapterOrTopic: cleanChapter,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        sourceImageCount: 0,
+        slides: initialSlides,
+        questions: initialQuestions,
+        summary: initialSummary,
+        config: {
+          totalQuestions: initialQuestions.length,
+          numMultipleChoice: 1,
+          numTrueFalse: 1,
+          numShortAnswer: 0,
+          numEssay: 0,
+          targetGrade: combinedGradeDisplay,
+          teachingGoal: 'concept_mastery',
+        },
       },
-    };
+      currentUser || null
+    );
 
     onCreateLesson(newLesson);
     onClose();

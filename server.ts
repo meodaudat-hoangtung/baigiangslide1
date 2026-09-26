@@ -214,7 +214,7 @@ app.post('/api/sync-deleted-ids', (req, res) => {
   }
 });
 
-// Save or sync a lesson
+// Save or sync a lesson (with strict RBAC & ownership protection)
 app.post('/api/sync-save-lesson', (req, res) => {
   try {
     const lesson: MathLesson = req.body;
@@ -226,12 +226,69 @@ app.post('/api/sync-save-lesson', (req, res) => {
     if (isReconcileOnly && deletedIdsSet.has(lesson.id)) {
       return res.json({ success: false, ignored: true, reason: 'deleted' });
     }
+
+    const userUid = (req.headers['x-user-uid'] as string) || '';
+    const userRole = (req.headers['x-user-role'] as string) || '';
+    const userUsername = ((req.headers['x-user-username'] as string) || '').trim().toLowerCase();
+
+    const existing = serverLessonDatabase.get(lesson.id);
+
+    // Enforce RBAC for non-admin members on existing lessons
+    if (!isReconcileOnly && existing && userRole === 'member') {
+      const isLessonOwner =
+        Boolean(existing.createdByUid && userUid && existing.createdByUid === userUid) ||
+        Boolean(
+          existing.createdByUsername &&
+            userUsername &&
+            existing.createdByUsername.trim().toLowerCase() === userUsername
+        );
+
+      if (!isLessonOwner) {
+        // Non-owner member CANNOT modify slides, lesson metadata, or other people's questions!
+        // They can ONLY add new consolidation questions or update/delete questions that they authored themselves (q.createdByUid === userUid).
+        const incomingQuestions = Array.isArray(lesson.questions) ? lesson.questions : [];
+        const existingQuestions = Array.isArray(existing.questions) ? existing.questions : [];
+
+        // Keep all questions NOT created by this member untouched
+        const protectedQuestions = existingQuestions.filter(
+          (q) => !q.createdByUid || q.createdByUid !== userUid
+        );
+        // Take only questions from incoming payload that strictly belong to this member
+        const memberQuestions = incomingQuestions.filter(
+          (q) => q && q.createdByUid && q.createdByUid === userUid
+        );
+
+        const mergedQuestions = [...protectedQuestions, ...memberQuestions].map((q, idx) => ({
+          ...q,
+          questionNumber: idx + 1,
+        }));
+
+        const safeLesson: MathLesson = {
+          ...existing,
+          questions: mergedQuestions,
+          updatedAt: Date.now(),
+        };
+
+        serverLessonDatabase.set(existing.id, safeLesson);
+        saveDatabaseToDisk();
+        broadcastRealtimeEvent('lesson:saved', safeLesson);
+        return res.json({ success: true, lesson: safeLesson, syncedAt: safeLesson.updatedAt });
+      }
+    }
+
+    // Preserve immutable creator metadata on existing lessons
+    if (existing && existing.createdByUid) {
+      lesson.createdByUid = existing.createdByUid;
+      lesson.createdByUsername = existing.createdByUsername || lesson.createdByUsername;
+      lesson.createdByEmail = existing.createdByEmail || lesson.createdByEmail;
+      lesson.createdByRole = existing.createdByRole || lesson.createdByRole;
+    }
+
     // If explicitly saved/created by user, un-delete it if it was previously marked deleted
     if (!isReconcileOnly) {
       deletedIdsSet.delete(lesson.id);
     }
     lesson.updatedAt = lesson.updatedAt || Date.now();
-    const existing = serverLessonDatabase.get(lesson.id);
     if (!existing || (lesson.updatedAt || 0) >= (existing.updatedAt || 0)) {
       serverLessonDatabase.set(lesson.id, lesson);
       saveDatabaseToDisk();
@@ -243,13 +300,34 @@ app.post('/api/sync-save-lesson', (req, res) => {
   }
 });
 
-// Delete a synced lesson permanently
+// Delete a synced lesson permanently (with strict RBAC & ownership protection)
 app.delete('/api/sync-delete-lesson/:id', (req, res) => {
   try {
     const id = req.params.id;
     if (!id) {
       return res.status(400).json({ error: 'Mã bài giảng không hợp lệ' });
     }
+
+    const userUid = (req.headers['x-user-uid'] as string) || '';
+    const userRole = (req.headers['x-user-role'] as string) || '';
+    const userUsername = ((req.headers['x-user-username'] as string) || '').trim().toLowerCase();
+
+    const existing = serverLessonDatabase.get(id);
+    if (existing && userRole === 'member') {
+      const isLessonOwner =
+        Boolean(existing.createdByUid && userUid && existing.createdByUid === userUid) ||
+        Boolean(
+          existing.createdByUsername &&
+            userUsername &&
+            existing.createdByUsername.trim().toLowerCase() === userUsername
+        );
+      if (!isLessonOwner) {
+        return res.status(403).json({
+          error: 'Thành viên không có quyền xóa bài giảng do người khác biên soạn.',
+        });
+      }
+    }
+
     serverLessonDatabase.delete(id);
     deletedIdsSet.add(id);
     saveDatabaseToDisk();

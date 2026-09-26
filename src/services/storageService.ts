@@ -437,10 +437,18 @@ export const StorageService = {
     // 2. Sync with both Express Server & Firebase Firestore in parallel
     let isSynced = false;
     try {
+      const currentSession = FirestoreService.getCurrentSession();
+      const authHeaders: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (currentSession?.uid) authHeaders['x-user-uid'] = currentSession.uid;
+      if (currentSession?.role) authHeaders['x-user-role'] = currentSession.role;
+      if (currentSession?.username) authHeaders['x-user-username'] = currentSession.username;
+
       const [serverRes, fsRes] = await Promise.allSettled([
         fetch('/api/sync-save-lesson', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: authHeaders,
           body: JSON.stringify(updatedLesson),
         }),
         FirestoreService.saveLessonToFirestore(updatedLesson),
@@ -478,8 +486,17 @@ export const StorageService = {
 
     // 3. Permanently delete from both Express Server & Firebase Firestore
     try {
+      const currentSession = FirestoreService.getCurrentSession();
+      const authHeaders: Record<string, string> = {};
+      if (currentSession?.uid) authHeaders['x-user-uid'] = currentSession.uid;
+      if (currentSession?.role) authHeaders['x-user-role'] = currentSession.role;
+      if (currentSession?.username) authHeaders['x-user-username'] = currentSession.username;
+
       await Promise.allSettled([
-        fetch(`/api/sync-delete-lesson/${lessonId}`, { method: 'DELETE' }),
+        fetch(`/api/sync-delete-lesson/${lessonId}`, {
+          method: 'DELETE',
+          headers: authHeaders,
+        }),
         FirestoreService.deleteLessonFromFirestore(lessonId),
       ]);
     } catch (err) {

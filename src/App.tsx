@@ -21,6 +21,22 @@ import {
   deleteLessonFromIndexedDB,
 } from './services/storageService';
 import { FirestoreService } from './services/firestoreService';
+import {
+  isAuthenticatedUser,
+  isAdminUser,
+  canCreateLesson,
+  canPresentLesson,
+  canEditLesson,
+  canDeleteLesson,
+  canModifySlide,
+  canCreateQuestion,
+  canEditQuestion,
+  canDeleteQuestion,
+  stampNewLessonOwnership,
+  stampNewSlideOwnership,
+  stampNewQuestionOwnership,
+} from './utils/permissions';
+import { ShieldAlert, Lock, LogIn } from 'lucide-react';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<AppUser | null>(() => {
@@ -497,13 +513,20 @@ export default function App() {
   }, []);
 
   const handleLessonGenerated = (newLesson: MathLesson) => {
-    saveLessonToAllTiers(newLesson);
-    handleSelectLessonId(newLesson.id);
+    if (!canCreateLesson(currentUser)) {
+      setIsLoginModalOpen(true);
+      return;
+    }
+    const ownedLesson = stampNewLessonOwnership(newLesson, currentUser);
+    saveLessonToAllTiers(ownedLesson);
+    handleSelectLessonId(ownedLesson.id);
     handleChangeTab('slides');
   };
 
   const handleUpdateSlide = (updatedSlide: Slide) => {
-    if (!currentLesson) return;
+    if (!currentLesson || !canModifySlide(updatedSlide, currentLesson, currentUser)) {
+      return;
+    }
     const updatedSlides = currentLesson.slides.map((s) =>
       s.id === updatedSlide.id ? updatedSlide : s
     );
@@ -517,19 +540,26 @@ export default function App() {
 
   const handleDeleteSlide = (slideId: string) => {
     if (!currentLesson) return;
+    const targetSlide = currentLesson.slides.find((s) => s.id === slideId);
+    if (!canModifySlide(targetSlide, currentLesson, currentUser)) {
+      return;
+    }
     const remaining = currentLesson.slides.filter((s) => s.id !== slideId);
     if (remaining.length === 0) {
-      const defaultSlide: Slide = {
-        id: `slide_${Date.now()}`,
-        slideNumber: 1,
-        title: 'Slide Trống',
-        blocks: [],
-        styleConfig: {
-          backgroundColor: currentLesson.slides[0]?.styleConfig?.backgroundColor || '#103463',
-          textColor: '#ffffff',
-          fontFamily: 'sans',
+      const defaultSlide: Slide = stampNewSlideOwnership(
+        {
+          id: `slide_${Date.now()}`,
+          slideNumber: 1,
+          title: 'Slide Trống',
+          blocks: [],
+          styleConfig: {
+            backgroundColor: currentLesson.slides[0]?.styleConfig?.backgroundColor || '#103463',
+            textColor: '#ffffff',
+            fontFamily: 'sans',
+          },
         },
-      };
+        currentUser
+      );
       const updatedLesson: MathLesson = {
         ...currentLesson,
         slides: [defaultSlide],
@@ -551,16 +581,19 @@ export default function App() {
   };
 
   const handleAddSlide = (newSlide: Slide, insertAfterIndex?: number) => {
-    if (!currentLesson) return;
+    if (!currentLesson || !canEditLesson(currentLesson, currentUser)) {
+      return;
+    }
+    const stampedSlide = stampNewSlideOwnership(newSlide, currentUser);
     const newSlides = [...currentLesson.slides];
     if (
       insertAfterIndex !== undefined &&
       insertAfterIndex >= 0 &&
       insertAfterIndex < newSlides.length
     ) {
-      newSlides.splice(insertAfterIndex + 1, 0, newSlide);
+      newSlides.splice(insertAfterIndex + 1, 0, stampedSlide);
     } else {
-      newSlides.push(newSlide);
+      newSlides.push(stampedSlide);
     }
     const reindexed = newSlides.map((s, idx) => ({
       ...s,
@@ -576,8 +609,23 @@ export default function App() {
 
   const handleUpdateQuestion = (updatedQuestion: Question) => {
     if (!currentLesson) return;
+    const existingQuestion = currentLesson.questions.find((q) => q.id === updatedQuestion.id);
+    if (!canEditQuestion(existingQuestion, currentLesson, currentUser)) {
+      return;
+    }
     const updatedQuestions = currentLesson.questions.map((q) =>
-      q.id === updatedQuestion.id ? updatedQuestion : q
+      q.id === updatedQuestion.id
+        ? {
+            ...updatedQuestion,
+            createdByUid: existingQuestion?.createdByUid || currentUser?.uid,
+            createdByUsername:
+              existingQuestion?.createdByUsername || currentUser?.username || currentUser?.email,
+            createdByName:
+              existingQuestion?.createdByName ||
+              currentUser?.displayName ||
+              currentUser?.username,
+          }
+        : q
     );
     const updatedLesson: MathLesson = {
       ...currentLesson,
@@ -589,6 +637,10 @@ export default function App() {
 
   const handleDeleteQuestion = (questionId: string) => {
     if (!currentLesson) return;
+    const existingQuestion = currentLesson.questions.find((q) => q.id === questionId);
+    if (!canDeleteQuestion(existingQuestion, currentLesson, currentUser)) {
+      return;
+    }
     const remaining = currentLesson.questions.filter((q) => q.id !== questionId);
     const reindexed = remaining.map((q, idx) => ({
       ...q,
@@ -603,8 +655,11 @@ export default function App() {
   };
 
   const handleAddQuestion = (newQuestion: Question) => {
-    if (!currentLesson) return;
-    const newQuestions = [...currentLesson.questions, newQuestion];
+    if (!currentLesson || !canCreateQuestion(currentUser)) {
+      return;
+    }
+    const stampedQuestion = stampNewQuestionOwnership(newQuestion, currentUser);
+    const newQuestions = [...currentLesson.questions, stampedQuestion];
     const reindexed = newQuestions.map((q, idx) => ({
       ...q,
       questionNumber: idx + 1,
@@ -618,23 +673,51 @@ export default function App() {
   };
 
   const handleUpdateLesson = (updatedLesson: MathLesson) => {
-    saveLessonToAllTiers(updatedLesson);
+    const existing = lessons.find((l) => l.id === updatedLesson.id);
+    if (existing && !canEditLesson(existing, currentUser)) {
+      return;
+    }
+    // Preserve creator metadata when updating
+    const preserved: MathLesson = {
+      ...updatedLesson,
+      createdByUid: existing?.createdByUid || updatedLesson.createdByUid || currentUser?.uid,
+      createdByUsername:
+        existing?.createdByUsername ||
+        updatedLesson.createdByUsername ||
+        currentUser?.username ||
+        currentUser?.email,
+      createdByEmail:
+        existing?.createdByEmail || updatedLesson.createdByEmail || currentUser?.email || '',
+      createdByRole:
+        existing?.createdByRole || updatedLesson.createdByRole || currentUser?.role || 'member',
+    };
+    saveLessonToAllTiers(preserved);
   };
 
   const handleDuplicateLesson = (lessonToDuplicate: MathLesson) => {
-    const duplicated: MathLesson = {
-      ...lessonToDuplicate,
-      id: `lesson-${Date.now()}`,
-      title: `${lessonToDuplicate.title} (Bản sao)`,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    };
+    if (!canEditLesson(lessonToDuplicate, currentUser)) {
+      return;
+    }
+    const duplicated = stampNewLessonOwnership(
+      {
+        ...lessonToDuplicate,
+        id: `lesson-${Date.now()}`,
+        title: `${lessonToDuplicate.title} (Bản sao)`,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      },
+      currentUser
+    );
     saveLessonToAllTiers(duplicated);
     handleSelectLessonId(duplicated.id);
   };
 
   const handleDeleteLesson = useCallback(
     (lessonId: string) => {
+      const targetLesson = lessons.find((l) => l.id === lessonId);
+      if (!canDeleteLesson(targetLesson, currentUser)) {
+        return;
+      }
       setLessons((prev) => {
         const remaining = prev.filter((l) => l.id !== lessonId);
         const nextActiveId =
@@ -647,12 +730,44 @@ export default function App() {
         return remaining;
       });
     },
-    [currentLessonId]
+    [currentLessonId, lessons, currentUser]
   );
 
   const handleImportLesson = (importedLesson: MathLesson) => {
-    saveLessonToAllTiers(importedLesson);
-    handleSelectLessonId(importedLesson.id);
+    if (!canCreateLesson(currentUser)) {
+      setIsLoginModalOpen(true);
+      return;
+    }
+    const existing = lessons.find((l) => l.id === importedLesson.id);
+    if (existing && !canEditLesson(existing, currentUser)) {
+      // Member cannot overwrite another user's lesson; import as a new lesson owned by member
+      const clonedLesson = stampNewLessonOwnership(
+        {
+          ...importedLesson,
+          id: `lesson-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        },
+        currentUser
+      );
+      saveLessonToAllTiers(clonedLesson);
+      handleSelectLessonId(clonedLesson.id);
+      handleChangeTab('slides');
+      return;
+    }
+
+    const stamped = isAdminUser(currentUser)
+      ? {
+          ...importedLesson,
+          createdByUid: importedLesson.createdByUid || currentUser?.uid,
+          createdByUsername:
+            importedLesson.createdByUsername || currentUser?.username || currentUser?.email,
+          createdByRole: importedLesson.createdByRole || 'admin',
+        }
+      : stampNewLessonOwnership(importedLesson, currentUser);
+
+    saveLessonToAllTiers(stamped);
+    handleSelectLessonId(stamped.id);
     handleChangeTab('slides');
   };
 
@@ -675,14 +790,23 @@ export default function App() {
   };
 
   const handleCreateNewLesson = (newLesson: MathLesson) => {
-    saveLessonToAllTiers(newLesson);
-    handleSelectLessonId(newLesson.id);
+    if (!canCreateLesson(currentUser)) {
+      setIsLoginModalOpen(true);
+      return;
+    }
+    const ownedLesson = stampNewLessonOwnership(newLesson, currentUser);
+    saveLessonToAllTiers(ownedLesson);
+    handleSelectLessonId(ownedLesson.id);
     handleChangeTab('slides');
   };
 
   const [isPresentationOpen, setIsPresentationOpen] = useState(false);
 
   const handleToggleFullscreen = () => {
+    if (!isAuthenticatedUser(currentUser)) {
+      setIsLoginModalOpen(true);
+      return;
+    }
     if (currentLesson && currentLesson.slides.length > 0) {
       setIsPresentationOpen(true);
     } else {
@@ -692,6 +816,15 @@ export default function App() {
         document.exitFullscreen?.().catch(() => {});
       }
     }
+  };
+
+  const handlePresentSpecificLesson = (lessonToPresent: MathLesson) => {
+    if (!canPresentLesson(lessonToPresent, currentUser)) {
+      setIsLoginModalOpen(true);
+      return;
+    }
+    handleSelectLessonId(lessonToPresent.id);
+    setIsPresentationOpen(true);
   };
 
   return (
@@ -706,8 +839,20 @@ export default function App() {
         }}
         activeTab={activeTab}
         setActiveTab={handleChangeTab}
-        onOpenUpload={() => setIsUploadModalOpen(true)}
-        onOpenCreateLesson={() => setIsCreateModalOpen(true)}
+        onOpenUpload={() => {
+          if (!canCreateLesson(currentUser)) {
+            setIsLoginModalOpen(true);
+            return;
+          }
+          setIsUploadModalOpen(true);
+        }}
+        onOpenCreateLesson={() => {
+          if (!canCreateLesson(currentUser)) {
+            setIsLoginModalOpen(true);
+            return;
+          }
+          setIsCreateModalOpen(true);
+        }}
         onToggleFullscreen={handleToggleFullscreen}
         isSynced={isSynced}
         isOnline={isOnline}
@@ -722,16 +867,40 @@ export default function App() {
         }}
       />
 
-      {/* Main View Area */}
+      {/* Main View Area (Requires Login for All System Capabilities) */}
       <main className="flex-1">
-        {activeTab === 'library' ? (
+        {!isAuthenticatedUser(currentUser) ? (
+          <div className="max-w-lg mx-auto px-4 py-20 text-center space-y-6">
+            <div className="w-16 h-16 rounded-2xl bg-indigo-500/15 border border-indigo-500/30 text-indigo-400 flex items-center justify-center mx-auto shadow-lg">
+              <Lock className="w-8 h-8" />
+            </div>
+            <div className="space-y-2">
+              <h2 className="text-2xl font-extrabold text-white">
+                Yêu Cầu Đăng Nhập Hệ Thống
+              </h2>
+              <p className="text-sm text-slate-400 leading-relaxed">
+                Tất cả các quyền năng (Soạn bài giảng mới, soạn câu hỏi củng cố, trình chiếu bài giảng và quản lý học liệu) chỉ có hiệu lực sau khi đăng nhập tài khoản hợp lệ do Quản trị viên (ADMIN) cấp phép.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsLoginModalOpen(true)}
+              className="px-6 py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white font-bold text-sm shadow-lg shadow-indigo-500/25 inline-flex items-center gap-2 transition-all"
+            >
+              <LogIn className="w-4 h-4" />
+              <span>Đăng Nhập Ngay</span>
+            </button>
+          </div>
+        ) : activeTab === 'library' ? (
           <LessonLibrary
             lessons={lessons}
             currentLessonId={currentLessonId}
+            currentUser={currentUser}
             onSelectLesson={(l) => {
               handleSelectLessonId(l.id);
               handleChangeTab('slides');
             }}
+            onPresentLesson={handlePresentSpecificLesson}
             onUpdateLesson={handleUpdateLesson}
             onDeleteLesson={handleDeleteLesson}
             onDuplicateLesson={handleDuplicateLesson}
@@ -747,6 +916,8 @@ export default function App() {
             {activeTab === 'slides' && (
               <StudioWorkspace
                 lesson={currentLesson}
+                currentUser={currentUser}
+                onPresentLesson={() => handlePresentSpecificLesson(currentLesson)}
                 onUpdateSlide={handleUpdateSlide}
                 onDeleteSlide={handleDeleteSlide}
                 onAddSlide={handleAddSlide}
@@ -756,6 +927,7 @@ export default function App() {
             {activeTab === 'questions' && (
               <QuizSection
                 lesson={currentLesson}
+                currentUser={currentUser}
                 onUpdateQuestion={handleUpdateQuestion}
                 onDeleteQuestion={handleDeleteQuestion}
                 onAddQuestion={handleAddQuestion}
@@ -774,16 +946,18 @@ export default function App() {
 
       {/* Upload AI Modal */}
       <UploadModal
-        isOpen={isUploadModalOpen}
+        isOpen={isUploadModalOpen && isAuthenticatedUser(currentUser)}
         onClose={() => setIsUploadModalOpen(false)}
         onLessonGenerated={handleLessonGenerated}
+        currentUser={currentUser}
       />
 
       {/* Create Lesson Modal */}
       <CreateLessonModal
-        isOpen={isCreateModalOpen}
+        isOpen={isCreateModalOpen && isAuthenticatedUser(currentUser)}
         onClose={() => setIsCreateModalOpen(false)}
         onCreateLesson={handleCreateNewLesson}
+        currentUser={currentUser}
       />
 
       {/* Login Authentication Gate */}
@@ -800,7 +974,7 @@ export default function App() {
       />
 
       {/* Fullscreen Presentation Modal */}
-      {currentLesson && (
+      {currentLesson && isAuthenticatedUser(currentUser) && (
         <FullscreenPresentationModal
           lesson={currentLesson}
           isOpen={isPresentationOpen}

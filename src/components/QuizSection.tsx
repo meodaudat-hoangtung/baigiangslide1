@@ -23,16 +23,27 @@ import {
   AlertCircle,
   Maximize2,
   Image as ImageIcon,
-  X
+  X,
+  Lock,
+  User,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { Question, QuestionType, MathLesson } from '../types';
+import { Question, QuestionType, MathLesson, AppUser } from '../types';
 import { MathView } from './MathView';
 import { QuestionEditModal } from './QuestionEditModal';
 import { DeleteQuestionModal } from './DeleteQuestionModal';
+import {
+  isAdminUser,
+  canCreateQuestion,
+  canEditQuestion,
+  canDeleteQuestion,
+  stampNewQuestionOwnership,
+  getLessonCreatorDisplayName,
+} from '../utils/permissions';
 
 interface QuizSectionProps {
   lesson: MathLesson;
+  currentUser?: AppUser | null;
   onUpdateQuestion?: (question: Question) => void;
   onDeleteQuestion?: (questionId: string) => void;
   onAddQuestion?: (question: Question) => void;
@@ -40,6 +51,7 @@ interface QuizSectionProps {
 
 export const QuizSection: React.FC<QuizSectionProps> = ({
   lesson,
+  currentUser = null,
   onUpdateQuestion,
   onDeleteQuestion,
   onAddQuestion,
@@ -227,31 +239,45 @@ export const QuizSection: React.FC<QuizSectionProps> = ({
   };
 
   const handleOpenCreateQuestion = () => {
+    if (!canCreateQuestion(currentUser)) return;
     setEditingQuestion(null);
     setIsEditModalOpen(true);
   };
 
   const handleOpenEditQuestion = (q: Question) => {
+    if (!canEditQuestion(q, lesson, currentUser)) return;
     setEditingQuestion(q);
     setIsEditModalOpen(true);
   };
 
   const handleOpenDeleteQuestion = (q: Question) => {
+    if (!canDeleteQuestion(q, lesson, currentUser)) return;
     setDeletingQuestion(q);
     setIsDeleteModalOpen(true);
   };
 
   const handleSaveQuestion = (savedQuestion: Question) => {
     if (editingQuestion) {
-      onUpdateQuestion?.(savedQuestion);
+      if (!canEditQuestion(editingQuestion, lesson, currentUser)) return;
+      onUpdateQuestion?.({
+        ...savedQuestion,
+        createdByUid: editingQuestion.createdByUid || currentUser?.uid,
+        createdByUsername:
+          editingQuestion.createdByUsername || currentUser?.username || currentUser?.email,
+        createdByName:
+          editingQuestion.createdByName || currentUser?.displayName || currentUser?.username,
+      });
     } else {
-      onAddQuestion?.(savedQuestion);
-      setSelectedQuestionId(savedQuestion.id);
+      if (!canCreateQuestion(currentUser)) return;
+      const stamped = stampNewQuestionOwnership(savedQuestion, currentUser);
+      onAddQuestion?.(stamped);
+      setSelectedQuestionId(stamped.id);
     }
   };
 
   const handleConfirmDelete = () => {
     if (deletingQuestion) {
+      if (!canDeleteQuestion(deletingQuestion, lesson, currentUser)) return;
       onDeleteQuestion?.(deletingQuestion.id);
       if (selectedQuestionId === deletingQuestion.id) {
         const remaining = lesson.questions.filter((q) => q.id !== deletingQuestion.id);
@@ -579,6 +605,25 @@ export const QuizSection: React.FC<QuizSectionProps> = ({
                       <span className={`px-2 py-0.5 rounded-lg text-xs font-semibold ${getDifficultyBadge(currentQuestion.difficulty).bg}`}>
                         {getDifficultyBadge(currentQuestion.difficulty).label}
                       </span>
+                      {isAdminUser(currentUser) ? (
+                        <span className="px-2 py-0.5 rounded-md bg-amber-500/15 border border-amber-500/30 text-amber-300 text-[11px] font-bold">
+                          Admin toàn quyền
+                        </span>
+                      ) : canEditQuestion(currentQuestion, lesson, currentUser) ? (
+                        <span className="px-2 py-0.5 rounded-md bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-[11px] font-bold">
+                          Câu hỏi của bạn • Được Sửa & Xóa
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded-md bg-slate-800 border border-slate-700 text-slate-300 text-[11px] font-semibold flex items-center gap-1">
+                          <Lock className="w-3 h-3 text-amber-400" />
+                          <span>
+                            Soạn bởi:{' '}
+                            {currentQuestion.createdByName ||
+                              currentQuestion.createdByUsername ||
+                              getLessonCreatorDisplayName(lesson)}
+                          </span>
+                        </span>
+                      )}
                     </div>
                     {currentQuestion.targetConcept && (
                       <p className="text-xs text-white mt-0.5 font-medium">
@@ -622,23 +667,35 @@ export const QuizSection: React.FC<QuizSectionProps> = ({
                     <RotateCcw className="w-3.5 h-3.5" />
                   </button>
 
-                  {/* Edit Question */}
-                  <button
-                    onClick={() => handleOpenEditQuestion(currentQuestion)}
-                    className="p-2 rounded-xl bg-slate-800 hover:bg-indigo-600/40 text-white hover:text-indigo-300 border border-slate-700 transition-colors"
-                    title="Chỉnh sửa câu hỏi"
-                  >
-                    <Edit3 className="w-3.5 h-3.5" />
-                  </button>
+                  {/* Edit Question (Only Admin or Question Creator) */}
+                  {canEditQuestion(currentQuestion, lesson, currentUser) && (
+                    <button
+                      onClick={() => handleOpenEditQuestion(currentQuestion)}
+                      className="p-2 rounded-xl bg-slate-800 hover:bg-indigo-600/40 text-white hover:text-indigo-300 border border-slate-700 transition-colors"
+                      title="Chỉnh sửa câu hỏi"
+                    >
+                      <Edit3 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
 
-                  {/* Delete Question */}
-                  <button
-                    onClick={() => handleOpenDeleteQuestion(currentQuestion)}
-                    className="p-2 rounded-xl bg-slate-800 hover:bg-rose-950/60 text-white hover:text-rose-400 border border-slate-700 transition-colors"
-                    title="Xóa câu hỏi"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                  {/* Delete Question (Only Admin or Question Creator) */}
+                  {canDeleteQuestion(currentQuestion, lesson, currentUser) ? (
+                    <button
+                      onClick={() => handleOpenDeleteQuestion(currentQuestion)}
+                      className="p-2 rounded-xl bg-slate-800 hover:bg-rose-950/60 text-white hover:text-rose-400 border border-slate-700 transition-colors"
+                      title="Xóa câu hỏi củng cố này"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  ) : (
+                    <span
+                      title="Thành viên không có quyền chỉnh sửa hoặc xóa câu hỏi củng cố do người khác soạn"
+                      className="px-2.5 py-1.5 rounded-xl bg-slate-950/80 border border-slate-800 text-slate-400 text-[11px] font-semibold flex items-center gap-1 select-none"
+                    >
+                      <Lock className="w-3 h-3 text-amber-400" />
+                      <span>Chỉ làm bài & trình chiếu</span>
+                    </span>
+                  )}
                 </div>
               </div>
 

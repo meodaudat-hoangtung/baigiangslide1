@@ -11,6 +11,10 @@
         "gradeLevel": { "type": "string", "description": "Grade level from Lớp 6 to Lớp 12" },
         "subject": { "type": "string", "description": "Subject name for grades 6 to 12" },
         "author": { "type": "string", "description": "Full name of the teacher who authored the lesson" },
+        "createdByUid": { "type": "string", "description": "UID of the user who created the lesson" },
+        "createdByUsername": { "type": "string", "description": "Username of the user who created the lesson" },
+        "createdByEmail": { "type": "string", "description": "Email of the user who created the lesson" },
+        "createdByRole": { "type": "string", "enum": ["admin", "member"], "description": "Role of the lesson creator" },
         "chapter": { "type": "string", "description": "Chapter name" },
         "createdAt": { "type": "number", "description": "Creation timestamp" },
         "updatedAt": { "type": "number", "description": "Last update timestamp" }

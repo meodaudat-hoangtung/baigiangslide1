@@ -42,9 +42,12 @@ import {
   Upload,
   Play,
   ZoomIn,
-  ZoomOut
+  ZoomOut,
+  Lock,
+  ShieldCheck,
 } from 'lucide-react';
-import { Slide, MathLesson, SlideBlockType, SlideContentBlock, SlideStyleConfig, SlideTextBox } from '../types';
+import { Slide, MathLesson, SlideBlockType, SlideContentBlock, SlideStyleConfig, SlideTextBox, AppUser } from '../types';
+import { getLessonCreatorDisplayName } from '../utils/permissions';
 import { getSlideBlocks, createDefaultBlock } from '../utils/slideBlocks';
 import { MathView } from './MathView';
 import { DeleteSlideModal } from './DeleteSlideModal';
@@ -60,6 +63,8 @@ const EMPTY_TEXT_BOXES: SlideTextBox[] = [];
 interface PowerPointWorkspaceProps {
   lesson: MathLesson;
   currentSlideIndex: number;
+  readOnly?: boolean;
+  currentUser?: AppUser | null;
   onSelectSlide: (index: number) => void;
   onUpdateSlide: (updatedSlide: Slide) => void;
   onDeleteSlide: (slideId: string) => void;
@@ -70,6 +75,8 @@ interface PowerPointWorkspaceProps {
 export const PowerPointWorkspace: React.FC<PowerPointWorkspaceProps> = ({
   lesson,
   currentSlideIndex,
+  readOnly = false,
+  currentUser = null,
   onSelectSlide,
   onUpdateSlide,
   onDeleteSlide,
@@ -90,6 +97,7 @@ export const PowerPointWorkspace: React.FC<PowerPointWorkspaceProps> = ({
   }, [currentSlide?.id, currentSlide?.teacherSpeechGuide]);
 
   const handleNotesChange = (value: string) => {
+    if (readOnly) return;
     setNotesInput(value);
     if (currentSlide) {
       onUpdateSlide({
@@ -146,7 +154,7 @@ export const PowerPointWorkspace: React.FC<PowerPointWorkspaceProps> = ({
 
   // Add a new free-floating PowerPoint Text Box to current slide
   const handleAddTextBox = () => {
-    if (!currentSlide) return;
+    if (readOnly || !currentSlide) return;
     const currentTextBoxes = currentSlide.textBoxes || [];
     const offset = (currentTextBoxes.length % 5) * 4;
     const newBox: SlideTextBox = {
@@ -560,6 +568,29 @@ export const PowerPointWorkspace: React.FC<PowerPointWorkspaceProps> = ({
 
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)] bg-slate-950 text-slate-100 overflow-hidden select-none">
+      {/* Banner thông báo khi Thành viên xem/trình chiếu bài giảng do người khác tạo */}
+      {readOnly && (
+        <div className="px-4 py-2 bg-gradient-to-r from-indigo-950 via-slate-900 to-indigo-950 border-b border-indigo-500/40 flex flex-wrap items-center justify-between gap-2 text-xs shrink-0 z-30">
+          <div className="flex items-center gap-2 text-indigo-200">
+            <span className="p-1 rounded-lg bg-amber-500/20 border border-amber-500/40 text-amber-300">
+              <Lock className="w-3.5 h-3.5" />
+            </span>
+            <span>
+              <strong>Chế Độ Trình Chiếu (Bảo Vệ Bản Quyền):</strong> Bài giảng này do{' '}
+              <strong className="text-sky-300">{getLessonCreatorDisplayName(lesson)}</strong> biên soạn. Thành viên có quyền <strong>trình chiếu bài giảng</strong>, nhưng không có quyền chỉnh sửa hoặc xóa bất kỳ slide nào của người khác.
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsFullscreen(true)}
+            className="px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1.5 shadow cursor-pointer"
+          >
+            <Maximize2 className="w-3.5 h-3.5" />
+            <span>Trình Chiếu Toàn Màn Hình (F5)</span>
+          </button>
+        </div>
+      )}
+
       {/* ============================================================== */}
       {/* 3-WINDOW WORKSPACE CONTAINER (LEFT THUMBNAILS + CENTER CANVAS) */}
       {/* ============================================================== */}
@@ -576,14 +607,21 @@ export const PowerPointWorkspace: React.FC<PowerPointWorkspaceProps> = ({
                 {slides.length}
               </span>
             </div>
-            <button
-              onClick={handleAddNewBlankSlide}
-              title="Thêm nhanh 1 slide trống ngay sau slide hiện tại"
-              className="flex items-center gap-1 text-xs font-bold text-slate-700 hover:text-indigo-600 hover:bg-white/80 px-2 py-1 rounded-lg transition-colors cursor-pointer"
-            >
-              <Plus className="w-3.5 h-3.5 text-rose-500" />
-              <span>Thêm</span>
-            </button>
+            {!readOnly ? (
+              <button
+                onClick={handleAddNewBlankSlide}
+                title="Thêm nhanh 1 slide trống ngay sau slide hiện tại"
+                className="flex items-center gap-1 text-xs font-bold text-slate-700 hover:text-indigo-600 hover:bg-white/80 px-2 py-1 rounded-lg transition-colors cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5 text-rose-500" />
+                <span>Thêm</span>
+              </button>
+            ) : (
+              <span className="flex items-center gap-1 text-[10px] font-bold text-slate-500 bg-slate-200/80 px-2 py-0.5 rounded-md">
+                <Lock className="w-3 h-3 text-amber-600" />
+                <span>Chỉ xem</span>
+              </span>
+            )}
           </div>
 
           {/* Thumbnail List */}
@@ -663,53 +701,55 @@ export const PowerPointWorkspace: React.FC<PowerPointWorkspaceProps> = ({
                       ) : null}
                     </div>
 
-                    {/* Hover Quick Actions */}
-                    <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5 bg-slate-950/80 p-0.5 rounded-lg backdrop-blur-sm z-10">
-                      {idx > 0 && (
+                    {/* Hover Quick Actions (Only for Admin or Lesson Creator) */}
+                    {!readOnly && (
+                      <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5 bg-slate-950/80 p-0.5 rounded-lg backdrop-blur-sm z-10">
+                        {idx > 0 && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleMoveSlide(idx, 'up');
+                            }}
+                            title="Di chuyển lên"
+                            className="p-1 text-slate-300 hover:text-white rounded hover:bg-slate-800"
+                          >
+                            <ChevronUp className="w-3 h-3" />
+                          </button>
+                        )}
+                        {idx < slides.length - 1 && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleMoveSlide(idx, 'down');
+                            }}
+                            title="Di chuyển xuống"
+                            className="p-1 text-slate-300 hover:text-white rounded hover:bg-slate-800"
+                          >
+                            <ChevronDown className="w-3 h-3" />
+                          </button>
+                        )}
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            handleMoveSlide(idx, 'up');
+                            handleDuplicateSlide(slide, idx);
                           }}
-                          title="Di chuyển lên"
+                          title="Nhân bản slide"
                           className="p-1 text-slate-300 hover:text-white rounded hover:bg-slate-800"
                         >
-                          <ChevronUp className="w-3 h-3" />
+                          <Copy className="w-3 h-3" />
                         </button>
-                      )}
-                      {idx < slides.length - 1 && (
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            handleMoveSlide(idx, 'down');
+                            handleOpenDelete(slide);
                           }}
-                          title="Di chuyển xuống"
-                          className="p-1 text-slate-300 hover:text-white rounded hover:bg-slate-800"
+                          title="Xóa slide này"
+                          className="p-1 text-rose-400 hover:text-rose-200 rounded hover:bg-rose-950/50"
                         >
-                          <ChevronDown className="w-3 h-3" />
+                          <Trash2 className="w-3 h-3" />
                         </button>
-                      )}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDuplicateSlide(slide, idx);
-                        }}
-                        title="Nhân bản slide"
-                        className="p-1 text-slate-300 hover:text-white rounded hover:bg-slate-800"
-                      >
-                        <Copy className="w-3 h-3" />
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleOpenDelete(slide);
-                        }}
-                        title="Xóa slide này"
-                        className="p-1 text-rose-400 hover:text-rose-200 rounded hover:bg-rose-950/50"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </button>
-                    </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               );
@@ -718,14 +758,21 @@ export const PowerPointWorkspace: React.FC<PowerPointWorkspaceProps> = ({
 
           {/* Bottom Pinned Button: "+ Thêm slide mới" */}
           <div className="p-3 bg-[#e8edf5] border-t border-slate-300/80 shrink-0">
-            <button
-              onClick={handleAddNewBlankSlide}
-              title="Tạo thêm slide trống mới"
-              className="w-full bg-white hover:bg-slate-50 border border-slate-300/90 hover:border-slate-400 rounded-xl py-2 px-3 text-xs font-bold text-slate-700 hover:text-slate-900 flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition-all cursor-pointer"
-            >
-              <Plus className="w-4 h-4 text-rose-500 shrink-0" />
-              <span>Thêm slide mới</span>
-            </button>
+            {!readOnly ? (
+              <button
+                onClick={handleAddNewBlankSlide}
+                title="Tạo thêm slide trống mới"
+                className="w-full bg-white hover:bg-slate-50 border border-slate-300/90 hover:border-slate-400 rounded-xl py-2 px-3 text-xs font-bold text-slate-700 hover:text-slate-900 flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition-all cursor-pointer"
+              >
+                <Plus className="w-4 h-4 text-rose-500 shrink-0" />
+                <span>Thêm slide mới</span>
+              </button>
+            ) : (
+              <div className="w-full bg-slate-200/80 border border-slate-300 rounded-xl py-2 px-3 text-[11px] font-semibold text-slate-600 flex items-center justify-center gap-1.5">
+                <Lock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                <span>Đã khóa sửa/xóa Slide</span>
+              </div>
+            )}
           </div>
         </aside>
 
@@ -816,64 +863,66 @@ export const PowerPointWorkspace: React.FC<PowerPointWorkspaceProps> = ({
 
             {/* Right: Chèn Ảnh, Video / Âm Thanh, Text Box đứng cạnh "Công cụ", Fullscreen TV, Print */}
             <div className="flex items-center gap-2 flex-wrap justify-end">
-              {/* Chèn Ảnh */}
-              <button
-                type="button"
-                onClick={() => handleAddBlock('image', 'Chèn Ảnh')}
-                title="Chèn ảnh hình vẽ, sơ đồ, đồ thị minh họa"
-                className="p-1.5 px-2.5 rounded-xl bg-white hover:bg-pink-50 border border-slate-300 hover:border-pink-300 text-slate-800 hover:text-pink-700 text-xs font-bold flex items-center gap-1.5 shadow-2xs hover:shadow-xs transition-all active:scale-95 cursor-pointer"
-              >
-                <ImageIcon className="w-3.5 h-3.5 text-pink-600" />
-                <span className="hidden sm:inline">Chèn Ảnh</span>
-              </button>
+              {!readOnly && (
+                <>
+                  {/* Chèn Ảnh */}
+                  <button
+                    type="button"
+                    onClick={() => handleAddBlock('image', 'Chèn Ảnh')}
+                    title="Chèn ảnh hình vẽ, sơ đồ, đồ thị minh họa"
+                    className="p-1.5 px-2.5 rounded-xl bg-white hover:bg-pink-50 border border-slate-300 hover:border-pink-300 text-slate-800 hover:text-pink-700 text-xs font-bold flex items-center gap-1.5 shadow-2xs hover:shadow-xs transition-all active:scale-95 cursor-pointer"
+                  >
+                    <ImageIcon className="w-3.5 h-3.5 text-pink-600" />
+                    <span className="hidden sm:inline">Chèn Ảnh</span>
+                  </button>
 
-              {/* Video / Âm Thanh */}
-              <button
-                type="button"
-                onClick={() => handleAddBlock('media', 'Video / Âm Thanh')}
-                title="Chèn video YouTube, mp4 bài giảng, file âm thanh giải thích"
-                className="p-1.5 px-2.5 rounded-xl bg-white hover:bg-rose-50 border border-slate-300 hover:border-rose-300 text-slate-800 hover:text-rose-700 text-xs font-bold flex items-center gap-1.5 shadow-2xs hover:shadow-xs transition-all active:scale-95 cursor-pointer"
-              >
-                <Film className="w-3.5 h-3.5 text-rose-600" />
-                <span className="hidden sm:inline">Video / Âm Thanh</span>
-              </button>
+                  {/* Video / Âm Thanh */}
+                  <button
+                    type="button"
+                    onClick={() => handleAddBlock('media', 'Video / Âm Thanh')}
+                    title="Chèn video YouTube, mp4 bài giảng, file âm thanh giải thích"
+                    className="p-1.5 px-2.5 rounded-xl bg-white hover:bg-rose-50 border border-slate-300 hover:border-rose-300 text-slate-800 hover:text-rose-700 text-xs font-bold flex items-center gap-1.5 shadow-2xs hover:shadow-xs transition-all active:scale-95 cursor-pointer"
+                  >
+                    <Film className="w-3.5 h-3.5 text-rose-600" />
+                    <span className="hidden sm:inline">Video / Âm Thanh</span>
+                  </button>
 
-              {/* Text Box */}
-              <button
-                type="button"
-                onClick={handleAddTextBox}
-                title="Chèn Hộp Chữ Tự Do (PowerPoint Text Box)"
-                className="p-1.5 px-2.5 rounded-xl bg-white hover:bg-indigo-50 border border-slate-300 hover:border-indigo-300 text-slate-800 hover:text-indigo-700 text-xs font-bold flex items-center gap-1.5 shadow-2xs hover:shadow-xs transition-all active:scale-95 cursor-pointer"
-              >
-                <Type className="w-3.5 h-3.5 text-indigo-600" />
-                <span>Text Box</span>
-              </button>
+                  {/* Text Box */}
+                  <button
+                    type="button"
+                    onClick={handleAddTextBox}
+                    title="Chèn Hộp Chữ Tự Do (PowerPoint Text Box)"
+                    className="p-1.5 px-2.5 rounded-xl bg-white hover:bg-indigo-50 border border-slate-300 hover:border-indigo-300 text-slate-800 hover:text-indigo-700 text-xs font-bold flex items-center gap-1.5 shadow-2xs hover:shadow-xs transition-all active:scale-95 cursor-pointer"
+                  >
+                    <Type className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Text Box</span>
+                  </button>
 
-              {/* "CÔNG CỤ" DROPDOWN BUTTON (Đã tích hợp Text Box & 12 công cụ sư phạm) */}
-              <div className="relative" ref={toolsMenuRef}>
-                <button
-                  type="button"
-                  onClick={() => setShowToolsMenu(!showToolsMenu)}
-                  title="Mở menu Công cụ: Thêm Text Box, Chèn khối, Định dạng, Hỗ trợ soạn thảo & Quản lý Slide"
-                  className={`p-1.5 px-3 rounded-xl text-xs font-bold flex items-center gap-2 transition-all shadow-sm active:scale-95 cursor-pointer ${
-                    showToolsMenu
-                      ? 'bg-indigo-600 text-white ring-2 ring-indigo-400 shadow-indigo-600/30'
-                      : 'bg-white hover:bg-slate-100 text-slate-800 border border-slate-300'
-                  }`}
-                >
-                  <Wrench className="w-3.5 h-3.5 text-indigo-600" />
-                  <span>Công cụ</span>
-                  {(activeToolCount > 0 || (currentSlide?.textBoxes && currentSlide.textBoxes.length > 0)) && (
-                    <span className="min-w-4 h-4 px-1 rounded-full bg-indigo-600 text-white text-[10px] font-extrabold flex items-center justify-center">
-                      {(currentSlide?.textBoxes?.length || 0) + activeToolCount}
-                    </span>
-                  )}
-                  <ChevronDown
-                    className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${
-                      showToolsMenu ? 'rotate-180 text-white' : ''
-                    }`}
-                  />
-                </button>
+                  {/* "CÔNG CỤ" DROPDOWN BUTTON (Đã tích hợp Text Box & 12 công cụ sư phạm) */}
+                  <div className="relative" ref={toolsMenuRef}>
+                    <button
+                      type="button"
+                      onClick={() => setShowToolsMenu(!showToolsMenu)}
+                      title="Mở menu Công cụ: Thêm Text Box, Chèn khối, Định dạng, Hỗ trợ soạn thảo & Quản lý Slide"
+                      className={`p-1.5 px-3 rounded-xl text-xs font-bold flex items-center gap-2 transition-all shadow-sm active:scale-95 cursor-pointer ${
+                        showToolsMenu
+                          ? 'bg-indigo-600 text-white ring-2 ring-indigo-400 shadow-indigo-600/30'
+                          : 'bg-white hover:bg-slate-100 text-slate-800 border border-slate-300'
+                      }`}
+                    >
+                      <Wrench className="w-3.5 h-3.5 text-indigo-600" />
+                      <span>Công cụ</span>
+                      {(activeToolCount > 0 || (currentSlide?.textBoxes && currentSlide.textBoxes.length > 0)) && (
+                        <span className="min-w-4 h-4 px-1 rounded-full bg-indigo-600 text-white text-[10px] font-extrabold flex items-center justify-center">
+                          {(currentSlide?.textBoxes?.length || 0) + activeToolCount}
+                        </span>
+                      )}
+                      <ChevronDown
+                        className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${
+                          showToolsMenu ? 'rotate-180 text-white' : ''
+                        }`}
+                      />
+                    </button>
 
                 {/* DROPDOWN MENU */}
                 {showToolsMenu && (
@@ -1076,6 +1125,8 @@ export const PowerPointWorkspace: React.FC<PowerPointWorkspaceProps> = ({
                   </div>
                 )}
               </div>
+                </>
+              )}
 
               {/* Play Animations Preview Button */}
               <button
@@ -1156,12 +1207,20 @@ export const PowerPointWorkspace: React.FC<PowerPointWorkspaceProps> = ({
               {/* PowerPoint Floating Text Boxes Overlay */}
               <SlideTextBoxOverlay
                 textBoxes={currentSlide?.textBoxes || EMPTY_TEXT_BOXES}
-                isEditable={true}
-                selectedBoxId={selectedTextBoxId}
-                onSelectBox={(id) => setSelectedTextBoxId(id)}
-                onUpdateTextBox={handleUpdateTextBox}
-                onDeleteTextBox={handleDeleteTextBox}
-                onDuplicateTextBox={handleDuplicateTextBox}
+                isEditable={!readOnly}
+                selectedBoxId={readOnly ? null : selectedTextBoxId}
+                onSelectBox={(id) => {
+                  if (!readOnly) setSelectedTextBoxId(id);
+                }}
+                onUpdateTextBox={(box) => {
+                  if (!readOnly) handleUpdateTextBox(box);
+                }}
+                onDeleteTextBox={(id) => {
+                  if (!readOnly) handleDeleteTextBox(id);
+                }}
+                onDuplicateTextBox={(id) => {
+                  if (!readOnly) handleDuplicateTextBox(id);
+                }}
                 animationPlayTrigger={slideAnimTrigger}
               />
 
@@ -1170,6 +1229,7 @@ export const PowerPointWorkspace: React.FC<PowerPointWorkspaceProps> = ({
                 /* SLIDE WITH BLOCKS */
                 <div className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto custom-scrollbar space-y-4 text-white font-sans">
                   {currentBlocks.map((block, bIdx) => {
+                    if (readOnly && block.isHidden) return null;
                     const badge = getBlockHeaderBadge(block.type);
                     const Icon = badge.icon;
 
@@ -1197,71 +1257,73 @@ export const PowerPointWorkspace: React.FC<PowerPointWorkspaceProps> = ({
                             )}
                           </div>
 
-                          <div className="flex items-center gap-1.5 opacity-90 group-hover:opacity-100 transition-opacity">
-                            {/* Nút Ẩn / Hiện Khối Đối Tượng */}
-                            <button
-                              type="button"
-                              onClick={() => handleToggleBlockVisibility(block.id)}
-                              title={block.isHidden ? "Khối đối tượng này đang ẩn. Nhấp để hiện lại" : "Ẩn khối đối tượng này (khỏi bài giảng / trình chiếu)"}
-                              className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 shadow-sm transition-all cursor-pointer ${
-                                block.isHidden
-                                  ? 'bg-amber-600 hover:bg-amber-500 text-white ring-1 ring-amber-400'
-                                  : 'bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white'
-                              }`}
-                            >
-                              {block.isHidden ? (
-                                <>
-                                  <EyeOff className="w-3 h-3 text-amber-200" />
-                                  <span>Hiện</span>
-                                </>
-                              ) : (
-                                <>
-                                  <Eye className="w-3 h-3 text-slate-400" />
-                                  <span>Ẩn</span>
-                                </>
+                          {!readOnly && (
+                            <div className="flex items-center gap-1.5 opacity-90 group-hover:opacity-100 transition-opacity">
+                              {/* Nút Ẩn / Hiện Khối Đối Tượng */}
+                              <button
+                                type="button"
+                                onClick={() => handleToggleBlockVisibility(block.id)}
+                                title={block.isHidden ? "Khối đối tượng này đang ẩn. Nhấp để hiện lại" : "Ẩn khối đối tượng này (khỏi bài giảng / trình chiếu)"}
+                                className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 shadow-sm transition-all cursor-pointer ${
+                                  block.isHidden
+                                    ? 'bg-amber-600 hover:bg-amber-500 text-white ring-1 ring-amber-400'
+                                    : 'bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white'
+                                }`}
+                              >
+                                {block.isHidden ? (
+                                  <>
+                                    <EyeOff className="w-3 h-3 text-amber-200" />
+                                    <span>Hiện</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Eye className="w-3 h-3 text-slate-400" />
+                                    <span>Ẩn</span>
+                                  </>
+                                )}
+                              </button>
+
+                              <button
+                                onClick={() => {
+                                  setEditingBlock(block);
+                                  setIsBlockModalOpen(true);
+                                }}
+                                title="Tùy chỉnh & Chỉnh sửa khối này"
+                                className="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold flex items-center gap-1 shadow-sm transition-colors cursor-pointer"
+                              >
+                                <Pencil className="w-3 h-3" />
+                                <span>Chỉnh sửa</span>
+                              </button>
+
+                              {bIdx > 0 && (
+                                <button
+                                  onClick={() => handleMoveBlock(bIdx, 'up')}
+                                  title="Di chuyển lên trên"
+                                  className="p-1 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer"
+                                >
+                                  <ArrowUp className="w-3.5 h-3.5" />
+                                </button>
                               )}
-                            </button>
 
-                            <button
-                              onClick={() => {
-                                setEditingBlock(block);
-                                setIsBlockModalOpen(true);
-                              }}
-                              title="Tùy chỉnh & Chỉnh sửa khối này"
-                              className="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold flex items-center gap-1 shadow-sm transition-colors cursor-pointer"
-                            >
-                              <Pencil className="w-3 h-3" />
-                              <span>Chỉnh sửa</span>
-                            </button>
+                              {bIdx < currentBlocks.length - 1 && (
+                                <button
+                                  onClick={() => handleMoveBlock(bIdx, 'down')}
+                                  title="Di chuyển xuống dưới"
+                                  className="p-1 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer"
+                                >
+                                  <ArrowDown className="w-3.5 h-3.5" />
+                                </button>
+                              )}
 
-                            {bIdx > 0 && (
                               <button
-                                onClick={() => handleMoveBlock(bIdx, 'up')}
-                                title="Di chuyển lên trên"
-                                className="p-1 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer"
+                                onClick={() => handleDeleteBlock(block.id)}
+                                title="Xóa khối khỏi trang chiếu"
+                                className="p-1 rounded-lg bg-rose-950/60 hover:bg-rose-600 text-rose-300 hover:text-white transition-colors cursor-pointer"
                               >
-                                <ArrowUp className="w-3.5 h-3.5" />
+                                <Trash2 className="w-3.5 h-3.5" />
                               </button>
-                            )}
-
-                            {bIdx < currentBlocks.length - 1 && (
-                              <button
-                                onClick={() => handleMoveBlock(bIdx, 'down')}
-                                title="Di chuyển xuống dưới"
-                                className="p-1 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer"
-                              >
-                                <ArrowDown className="w-3.5 h-3.5" />
-                              </button>
-                            )}
-
-                            <button
-                              onClick={() => handleDeleteBlock(block.id)}
-                              title="Xóa khối khỏi trang chiếu"
-                              className="p-1 rounded-lg bg-rose-950/60 hover:bg-rose-600 text-rose-300 hover:text-white transition-colors cursor-pointer"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
+                            </div>
+                          )}
                         </div>
 
                         {/* 1. LESSON TITLE */}
@@ -1576,8 +1638,13 @@ export const PowerPointWorkspace: React.FC<PowerPointWorkspaceProps> = ({
                 <input
                   type="text"
                   value={notesInput}
+                  readOnly={readOnly}
                   onChange={(e) => handleNotesChange(e.target.value)}
-                  placeholder="Bấm để thêm ghi chú (Click to add notes)..."
+                  placeholder={
+                    readOnly
+                      ? 'Ghi chú thuyết trình (Chế độ chỉ đọc khi xem bài của thành viên khác)...'
+                      : 'Bấm để thêm ghi chú (Click to add notes)...'
+                  }
                   className="flex-1 bg-transparent border-none outline-none text-xs text-slate-800 placeholder:text-slate-400 placeholder:italic font-sans"
                 />
               </div>
@@ -1639,8 +1706,13 @@ export const PowerPointWorkspace: React.FC<PowerPointWorkspaceProps> = ({
                 <textarea
                   rows={4}
                   value={notesInput}
+                  readOnly={readOnly}
                   onChange={(e) => handleNotesChange(e.target.value)}
-                  placeholder="Nhập chi tiết lời giảng của giáo viên cho slide này, câu hỏi dẫn dắt, lưu ý phản xạ của học sinh..."
+                  placeholder={
+                    readOnly
+                      ? 'Chế độ chỉ đọc — Không có quyền chỉnh sửa ghi chú của tác giả khác.'
+                      : 'Nhập chi tiết lời giảng của giáo viên cho slide này, câu hỏi dẫn dắt, lưu ý phản xạ của học sinh...'
+                  }
                   className="w-full p-2.5 rounded-xl border border-slate-300 bg-white text-xs text-slate-800 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-400 font-sans custom-scrollbar leading-relaxed"
                 />
                 {notesInput.includes('$') && (

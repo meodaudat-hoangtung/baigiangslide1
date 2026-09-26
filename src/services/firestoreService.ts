@@ -279,23 +279,21 @@ export const FirestoreService = {
   async createMemberAccount(params: {
     username: string;
     password: string;
-    email: string;
-    phone: string;
+    email?: string;
+    phone?: string;
     displayName: string;
     role?: UserRole;
     status?: UserStatus;
     notes?: string;
   }): Promise<AppUser> {
     const cleanUsername = params.username.trim().toLowerCase();
-    const cleanEmail = params.email.trim().toLowerCase();
-    const cleanPhone = params.phone.trim();
+    const cleanEmail = (params.email || '').trim().toLowerCase();
+    const cleanPhone = (params.phone || '').trim();
     const cleanPw = params.password.trim();
     const cleanName = params.displayName.trim() || 'Thành viên Giáo viên';
 
     if (!cleanUsername) throw new Error('Vui lòng nhập Tên đăng nhập.');
     if (!cleanPw) throw new Error('Vui lòng nhập Mật khẩu cho thành viên.');
-    if (!cleanEmail) throw new Error('Vui lòng nhập Gmail của thành viên.');
-    if (!cleanPhone) throw new Error('Vui lòng nhập Số điện thoại của thành viên.');
 
     // Check if username already exists
     const qUsername = query(collection(db, USERS_COLLECTION), where('username', '==', cleanUsername));
@@ -311,7 +309,7 @@ export const FirestoreService = {
       uid: newUid,
       username: cleanUsername,
       password: cleanPw,
-      email: cleanEmail,
+      email: cleanEmail || `${cleanUsername}@thanhvien.edu.vn`,
       phone: cleanPhone,
       displayName: cleanName,
       role: params.role || 'member',
@@ -350,21 +348,23 @@ export const FirestoreService = {
     await updateDoc(userRef, { status });
   },
 
-  // Sync / create user profile on Firestore
+  // Sync / create user profile on Firestore (Strictly Super Admin or Admin-provisioned Member)
   async syncUserProfile(fbUser: FirebaseUser): Promise<AppUser> {
+    const isSuperAdmin = fbUser.email?.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase();
     const userRef = doc(db, USERS_COLLECTION, fbUser.uid);
     const snap = await getDoc(userRef);
 
-    const isSuperAdmin = fbUser.email?.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase();
-
     if (snap.exists()) {
       const existing = snap.data() as AppUser;
+      if (!isSuperAdmin && existing.status === 'blocked') {
+        await fbSignOut(auth).catch(() => {});
+        throw new Error('Tài khoản của bạn đã bị Quản trị viên tạm khóa.');
+      }
       const updatedUser: AppUser = {
         ...existing,
         displayName: fbUser.displayName || existing.displayName || 'Giáo viên',
         photoURL: fbUser.photoURL || existing.photoURL || '',
         lastLoginAt: Date.now(),
-        // Super admin email is always kept as admin & active
         role: isSuperAdmin ? 'admin' : existing.role,
         status: isSuperAdmin ? 'active' : existing.status,
       };
@@ -378,24 +378,48 @@ export const FirestoreService = {
       }).catch((e) => console.warn('Could not update user doc:', e));
 
       return updatedUser;
-    } else {
-      // First time user registration in Firestore
-      const newUser: AppUser = {
+    }
+
+    if (isSuperAdmin) {
+      const adminUser: AppUser = {
         uid: fbUser.uid,
-        email: fbUser.email || '',
-        displayName: fbUser.displayName || 'Giáo viên Toán',
+        email: fbUser.email || SUPER_ADMIN_EMAIL,
+        username: 'admin',
+        displayName: fbUser.displayName || 'Quản Trị (ADMIN)',
         photoURL: fbUser.photoURL || '',
-        role: isSuperAdmin ? 'admin' : 'member',
-        status: isSuperAdmin ? 'active' : 'active', // default to active member
+        role: 'admin',
+        status: 'active',
         createdAt: Date.now(),
         lastLoginAt: Date.now(),
         schoolName: '',
-        bio: 'Giáo viên bộ môn Toán'
+        bio: 'Quản trị viên cao nhất của hệ thống'
       };
-
-      await setDoc(userRef, newUser);
-      return newUser;
+      await setDoc(userRef, adminUser);
+      return adminUser;
     }
+
+    // Check if Admin already created a member account matching this email
+    if (fbUser.email) {
+      const qEmail = query(
+        collection(db, USERS_COLLECTION),
+        where('email', '==', fbUser.email.trim().toLowerCase())
+      );
+      const emailSnap = await getDocs(qEmail);
+      if (!emailSnap.empty) {
+        const docSnap = emailSnap.docs[0];
+        const memberData = docSnap.data() as AppUser;
+        if (memberData.status === 'blocked') {
+          await fbSignOut(auth).catch(() => {});
+          throw new Error('Tài khoản của bạn đã bị Quản trị viên tạm khóa.');
+        }
+        return { ...memberData, uid: docSnap.id, lastLoginAt: Date.now() };
+      }
+    }
+
+    await fbSignOut(auth).catch(() => {});
+    throw new Error(
+      'Tài khoản này chưa được Quản trị viên (ADMIN) cấp phép. Vui lòng đăng nhập bằng Tài khoản & Mật khẩu do Admin cung cấp!'
+    );
   },
 
   // Listen to Auth State changes & fetch Firestore user profile
@@ -406,35 +430,11 @@ export const FirestoreService = {
         return;
       }
       try {
-        const userRef = doc(db, USERS_COLLECTION, fbUser.uid);
-        const snap = await getDoc(userRef);
-        if (snap.exists()) {
-          const user = snap.data() as AppUser;
-          // Verify super admin role guarantee
-          if (fbUser.email?.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase() && user.role !== 'admin') {
-            user.role = 'admin';
-            user.status = 'active';
-            await updateDoc(userRef, { role: 'admin', status: 'active' }).catch(() => {});
-          }
-          callback(user, false);
-        } else {
-          const synced = await this.syncUserProfile(fbUser);
-          callback(synced, false);
-        }
+        const synced = await this.syncUserProfile(fbUser);
+        callback(synced, false);
       } catch (err) {
-        console.error('Error fetching user profile:', err);
-        // Fallback user object if firestore fails
-        const fallbackUser: AppUser = {
-          uid: fbUser.uid,
-          email: fbUser.email || '',
-          displayName: fbUser.displayName || 'Giáo viên',
-          photoURL: fbUser.photoURL || '',
-          role: fbUser.email?.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase() ? 'admin' : 'member',
-          status: 'active',
-          createdAt: Date.now(),
-          lastLoginAt: Date.now()
-        };
-        callback(fallbackUser, false);
+        console.warn('Unprovisioned or blocked auth state:', err);
+        callback(null, false);
       }
     });
   },
@@ -555,11 +555,83 @@ export const FirestoreService = {
     }
   },
 
-  // Save lesson to Firestore (with automatic chunking if > 650KB)
+  // Save lesson to Firestore (with automatic chunking if > 650KB & ownership protection)
   async saveLessonToFirestore(lesson: MathLesson): Promise<void> {
+    const currentSession = this.getCurrentSession();
+    if (!currentSession) {
+      throw new Error('Vui lòng đăng nhập hệ thống để thực hiện thao tác này.');
+    }
+
+    const lessonRef = doc(db, LESSONS_COLLECTION, lesson.id);
+
+    // If member, verify they are not overwriting another person's lesson slides/metadata
+    if (currentSession.role !== 'admin') {
+      try {
+        const existingSnap = await getDoc(lessonRef);
+        if (existingSnap.exists()) {
+          const existingRaw = existingSnap.data();
+          const existingLesson = await resolveChunkedLesson(existingRaw);
+          if (existingLesson) {
+            const isOwner =
+              (existingLesson.createdByUid && existingLesson.createdByUid === currentSession.uid) ||
+              (existingLesson.createdByUsername &&
+                currentSession.username &&
+                existingLesson.createdByUsername.trim().toLowerCase() ===
+                  currentSession.username.trim().toLowerCase());
+
+            if (!isOwner) {
+              // Member is NOT owner of this lesson: preserve all original lesson metadata, slides, and other users' questions
+              const otherUsersQuestions = (existingLesson.questions || []).filter((q) => {
+                const qOwnedByMember =
+                  (q.createdByUid && q.createdByUid === currentSession.uid) ||
+                  (q.createdByUsername &&
+                    currentSession.username &&
+                    q.createdByUsername.trim().toLowerCase() ===
+                      currentSession.username.trim().toLowerCase());
+                return !qOwnedByMember;
+              });
+
+              const memberQuestions = (lesson.questions || [])
+                .filter((q) => {
+                  const belongsToOther = otherUsersQuestions.some((oq) => oq.id === q.id);
+                  return (
+                    !belongsToOther &&
+                    (!q.createdByUid || q.createdByUid === currentSession.uid)
+                  );
+                })
+                .map((q) => ({
+                  ...q,
+                  createdByUid: currentSession.uid,
+                  createdByUsername: currentSession.username || currentSession.email || currentSession.uid,
+                  createdByName:
+                    q.createdByName ||
+                    currentSession.displayName ||
+                    currentSession.username ||
+                    'Thành viên',
+                }));
+
+              const mergedQuestions = [...otherUsersQuestions, ...memberQuestions].map(
+                (q, idx) => ({
+                  ...q,
+                  questionNumber: idx + 1,
+                })
+              );
+
+              lesson = {
+                ...existingLesson,
+                questions: mergedQuestions,
+                updatedAt: Date.now(),
+              };
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('Ownership verification check in saveLessonToFirestore:', e);
+      }
+    }
+
     const cleanLesson = cleanFirestoreData(lesson);
     const serialized = JSON.stringify(cleanLesson);
-    const lessonRef = doc(db, LESSONS_COLLECTION, cleanLesson.id);
 
     if (serialized.length <= MAX_DOC_CHARS) {
       await setDoc(lessonRef, { ...cleanLesson, isChunked: false, chunkCount: 0 });
@@ -582,7 +654,15 @@ export const FirestoreService = {
         id: cleanLesson.id,
         title: cleanLesson.title,
         grade: cleanLesson.grade,
-        chapter: cleanLesson.chapter,
+        gradeLevel: cleanLesson.gradeLevel || '',
+        subject: cleanLesson.subject || '',
+        author: cleanLesson.author || '',
+        createdByUid: cleanLesson.createdByUid || '',
+        createdByUsername: cleanLesson.createdByUsername || '',
+        createdByEmail: cleanLesson.createdByEmail || '',
+        createdByRole: cleanLesson.createdByRole || 'admin',
+        chapter: cleanLesson.chapterOrTopic || '',
+        chapterOrTopic: cleanLesson.chapterOrTopic || '',
         createdAt: cleanLesson.createdAt || Date.now(),
         updatedAt: cleanLesson.updatedAt || Date.now(),
         slides: [],
@@ -600,23 +680,52 @@ export const FirestoreService = {
     } catch {}
   },
 
-  // Delete lesson permanently from Firestore & record permanent tombstone
+  // Delete lesson permanently from Firestore & record permanent tombstone (Admin or Lesson Creator only)
   async deleteLessonFromFirestore(lessonId: string): Promise<void> {
-    // 1. Record permanent tombstone FIRST so all listeners immediately know it's deleted
-    const tombstoneRef = doc(db, DELETED_LESSONS_COLLECTION, lessonId);
-    await setDoc(tombstoneRef, { deletedAt: Date.now(), id: lessonId });
+    const currentSession = this.getCurrentSession();
+    if (!currentSession) {
+      throw new Error('Vui lòng đăng nhập hệ thống để thực hiện thao tác này.');
+    }
 
-    // 2. Delete main lesson document
     const lessonRef = doc(db, LESSONS_COLLECTION, lessonId);
+    let chunkCount = 0;
     try {
       const snap = await getDoc(lessonRef);
-      if (snap.exists() && snap.data()?.chunkCount) {
-        const count = snap.data().chunkCount as number;
-        for (let i = 0; i < count; i++) {
-          await deleteDoc(doc(db, LESSON_CHUNKS_COLLECTION, `${lessonId}_part_${i}`)).catch(() => {});
+      if (snap.exists()) {
+        const data = snap.data();
+        chunkCount = (data?.chunkCount as number) || 0;
+        if (currentSession.role !== 'admin') {
+          const isOwner =
+            (data?.createdByUid && data.createdByUid === currentSession.uid) ||
+            (data?.createdByUsername &&
+              currentSession.username &&
+              String(data.createdByUsername).trim().toLowerCase() ===
+                currentSession.username.trim().toLowerCase());
+          if (!isOwner) {
+            throw new Error('Thành viên không có quyền xóa bài giảng do người khác soạn!');
+          }
         }
       }
-    } catch {}
+    } catch (err: any) {
+      if (err?.message?.includes('không có quyền')) {
+        throw err;
+      }
+    }
+
+    // 1. Record permanent tombstone FIRST so all listeners immediately know it's deleted
+    const tombstoneRef = doc(db, DELETED_LESSONS_COLLECTION, lessonId);
+    await setDoc(tombstoneRef, {
+      deletedAt: Date.now(),
+      id: lessonId,
+      deletedByUid: currentSession.uid,
+    });
+
+    // 2. Delete chunks & main lesson document
+    if (chunkCount > 0) {
+      for (let i = 0; i < chunkCount; i++) {
+        await deleteDoc(doc(db, LESSON_CHUNKS_COLLECTION, `${lessonId}_part_${i}`)).catch(() => {});
+      }
+    }
     await deleteDoc(lessonRef);
   },
 

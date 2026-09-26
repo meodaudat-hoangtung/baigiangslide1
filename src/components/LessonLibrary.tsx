@@ -20,9 +20,12 @@ import {
   ChevronDown,
   X,
   Check,
-  Filter
+  Filter,
+  Play,
+  Lock,
+  Crown,
 } from 'lucide-react';
-import { MathLesson } from '../types';
+import { MathLesson, AppUser } from '../types';
 import { EditLessonModal } from './EditLessonModal';
 import { DeleteLessonModal } from './DeleteLessonModal';
 import { EmptyLessonState } from './EmptyLessonState';
@@ -34,13 +37,23 @@ import {
   extractLessonSubjectLabel,
   matchesLessonGrade,
   matchesLessonSubject,
-  matchesLessonSearchQuery
+  matchesLessonSearchQuery,
 } from '../constants/curriculum';
+import {
+  isAdminUser,
+  isLessonCreatedByUser,
+  canEditLesson,
+  canDeleteLesson,
+  canPresentLesson,
+  getLessonCreatorDisplayName,
+} from '../utils/permissions';
 
 interface LessonLibraryProps {
   lessons: MathLesson[];
   currentLessonId: string | null;
+  currentUser?: AppUser | null;
   onSelectLesson: (lesson: MathLesson) => void;
+  onPresentLesson?: (lesson: MathLesson) => void;
   onUpdateLesson: (updatedLesson: MathLesson) => void;
   onDeleteLesson: (lessonId: string) => void;
   onDuplicateLesson?: (lesson: MathLesson) => void;
@@ -55,7 +68,9 @@ interface LessonLibraryProps {
 export const LessonLibrary: React.FC<LessonLibraryProps> = ({
   lessons,
   currentLessonId,
+  currentUser = null,
   onSelectLesson,
+  onPresentLesson,
   onUpdateLesson,
   onDeleteLesson,
   onDuplicateLesson,
@@ -70,6 +85,7 @@ export const LessonLibrary: React.FC<LessonLibraryProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedGradeFilter, setSelectedGradeFilter] = useState<string>('all');
   const [selectedSubjectFilter, setSelectedSubjectFilter] = useState<string>('all');
+  const [ownershipFilter, setOwnershipFilter] = useState<'all' | 'mine'>('all');
 
   // Dropdown states for grade & subject filter
   const [isGradeMenuOpen, setIsGradeMenuOpen] = useState(false);
@@ -83,6 +99,8 @@ export const LessonLibrary: React.FC<LessonLibraryProps> = ({
   const [deletingLesson, setDeletingLesson] = useState<MathLesson | null>(null);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [importNotice, setImportNotice] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+
+  const isAdmin = isAdminUser(currentUser);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -128,6 +146,13 @@ export const LessonLibrary: React.FC<LessonLibraryProps> = ({
         const text = event.target?.result as string;
         const parsed = JSON.parse(text);
         if (Array.isArray(parsed)) {
+          if (!isAdmin) {
+            showNotice(
+              'Chỉ Quản trị viên (ADMIN) mới có quyền khôi phục tệp sao lưu toàn hệ thống. Thành viên chỉ có thể nhập từng bài giảng mới của mình.',
+              'error'
+            );
+            return;
+          }
           await StorageService.importBackup(text);
           onRefreshCloudSync();
           showNotice(`Đã khôi phục thành công ${parsed.length} bài giảng vào hệ thống!`, 'success');
@@ -145,20 +170,48 @@ export const LessonLibrary: React.FC<LessonLibraryProps> = ({
     e.target.value = '';
   };
 
+  const myLessonsCount = lessons.filter((l) => {
+    if (!currentUser) return false;
+    if (l.createdByUid && l.createdByUid === currentUser.uid) return true;
+    if (
+      l.createdByUsername &&
+      currentUser.username &&
+      l.createdByUsername.trim().toLowerCase() === currentUser.username.trim().toLowerCase()
+    ) {
+      return true;
+    }
+    return false;
+  }).length;
+
   const filteredLessons = lessons.filter((lesson) => {
     const matchGrade = matchesLessonGrade(lesson, selectedGradeFilter);
     const matchSubject = matchesLessonSubject(lesson, selectedSubjectFilter);
     const matchQuery = matchesLessonSearchQuery(lesson, searchQuery);
-    return matchGrade && matchSubject && matchQuery;
+    const matchOwnership =
+      ownershipFilter === 'all'
+        ? true
+        : Boolean(
+            currentUser &&
+              ((lesson.createdByUid && lesson.createdByUid === currentUser.uid) ||
+                (lesson.createdByUsername &&
+                  currentUser.username &&
+                  lesson.createdByUsername.trim().toLowerCase() ===
+                    currentUser.username.trim().toLowerCase()))
+          );
+    return matchGrade && matchSubject && matchQuery && matchOwnership;
   });
 
   const hasActiveFilters =
-    searchQuery.trim() !== '' || selectedGradeFilter !== 'all' || selectedSubjectFilter !== 'all';
+    searchQuery.trim() !== '' ||
+    selectedGradeFilter !== 'all' ||
+    selectedSubjectFilter !== 'all' ||
+    ownershipFilter !== 'all';
 
   const handleResetFilters = () => {
     setSearchQuery('');
     setSelectedGradeFilter('all');
     setSelectedSubjectFilter('all');
+    setOwnershipFilter('all');
   };
 
   // Count lessons per grade for quick filter badges
@@ -478,52 +531,109 @@ export const LessonLibrary: React.FC<LessonLibraryProps> = ({
           </div>
         </div>
 
-        {/* Thanh chọn nhanh Khối Lớp (Lớp 6 đến Lớp 12) */}
-        <div className="flex items-center gap-1.5 flex-wrap pt-1">
-          <span className="text-[11px] font-semibold text-slate-400 mr-1 flex items-center gap-1">
-            <Filter className="w-3 h-3 text-indigo-400" />
-            <span>Lọc nhanh theo lớp:</span>
-          </span>
-          <button
-            type="button"
-            onClick={() => setSelectedGradeFilter('all')}
-            className={`px-3 py-1 rounded-xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
-              selectedGradeFilter === 'all'
-                ? 'bg-indigo-600 text-white shadow-sm'
-                : 'bg-slate-800/80 text-slate-400 hover:text-white hover:bg-slate-800 border border-slate-700/70'
-            }`}
-          >
-            Tất cả ({lessons.length})
-          </button>
-          {GRADE_OPTIONS.map((g) => {
-            const count = getGradeLessonCount(g.label);
-            const isSelected = selectedGradeFilter === g.label;
-            return (
-              <button
-                key={g.id}
-                type="button"
-                onClick={() =>
-                  setSelectedGradeFilter(isSelected ? 'all' : g.label)
-                }
-                className={`px-3 py-1 rounded-xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
-                  isSelected
-                    ? 'bg-indigo-600 text-white shadow-sm'
-                    : 'bg-slate-800/80 text-slate-300 hover:text-white hover:bg-slate-800 border border-slate-700/70'
-                }`}
-              >
-                <span>{g.label}</span>
-                {count > 0 && (
-                  <span
-                    className={`text-[10px] font-mono px-1.5 py-0.2 rounded-md ${
-                      isSelected ? 'bg-indigo-900 text-indigo-100' : 'bg-slate-900 text-indigo-300'
-                    }`}
-                  >
-                    {count}
-                  </span>
-                )}
-              </button>
-            );
-          })}
+        {/* Thanh chọn nhanh Khối Lớp (Lớp 6 đến Lớp 12) + Bộ lọc bài của tôi */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-1 border-t border-slate-800/60">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-[11px] font-semibold text-slate-400 mr-1 flex items-center gap-1">
+              <Filter className="w-3 h-3 text-indigo-400" />
+              <span>Lọc nhanh theo lớp:</span>
+            </span>
+            <button
+              type="button"
+              onClick={() => setSelectedGradeFilter('all')}
+              className={`px-3 py-1 rounded-xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
+                selectedGradeFilter === 'all'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'bg-slate-800/80 text-slate-400 hover:text-white hover:bg-slate-800 border border-slate-700/70'
+              }`}
+            >
+              Tất cả ({lessons.length})
+            </button>
+            {GRADE_OPTIONS.map((g) => {
+              const count = getGradeLessonCount(g.label);
+              const isSelected = selectedGradeFilter === g.label;
+              return (
+                <button
+                  key={g.id}
+                  type="button"
+                  onClick={() =>
+                    setSelectedGradeFilter(isSelected ? 'all' : g.label)
+                  }
+                  className={`px-3 py-1 rounded-xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
+                    isSelected
+                      ? 'bg-indigo-600 text-white shadow-sm'
+                      : 'bg-slate-800/80 text-slate-300 hover:text-white hover:bg-slate-800 border border-slate-700/70'
+                  }`}
+                >
+                  <span>{g.label}</span>
+                  {count > 0 && (
+                    <span
+                      className={`text-[10px] font-mono px-1.5 py-0.2 rounded-md ${
+                        isSelected ? 'bg-indigo-900 text-indigo-100' : 'bg-slate-900 text-indigo-300'
+                      }`}
+                    >
+                      {count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Bộ lọc Quyền sở hữu bài soạn */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              type="button"
+              onClick={() => setOwnershipFilter('all')}
+              className={`px-3 py-1 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                ownershipFilter === 'all'
+                  ? 'bg-emerald-600 text-white shadow-sm'
+                  : 'bg-slate-800/80 text-slate-300 hover:text-white border border-slate-700/70'
+              }`}
+            >
+              Tất cả bài giảng ({lessons.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setOwnershipFilter('mine')}
+              className={`px-3 py-1 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+                ownershipFilter === 'mine'
+                  ? 'bg-emerald-600 text-white shadow-sm'
+                  : 'bg-slate-800/80 text-slate-300 hover:text-white border border-slate-700/70'
+              }`}
+            >
+              <User className="w-3 h-3" />
+              <span>Bài do tôi soạn ({myLessonsCount})</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* RBAC Data Security Notice Banner */}
+      <div
+        className={`rounded-2xl p-3.5 border text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+          isAdmin
+            ? 'bg-amber-950/30 border-amber-500/30 text-amber-200'
+            : 'bg-indigo-950/30 border-indigo-500/30 text-indigo-200'
+        }`}
+      >
+        <div className="flex items-start sm:items-center gap-2.5">
+          {isAdmin ? (
+            <Crown className="w-4 h-4 text-amber-400 shrink-0 mt-0.5 sm:mt-0" />
+          ) : (
+            <ShieldCheck className="w-4 h-4 text-indigo-400 shrink-0 mt-0.5 sm:mt-0" />
+          )}
+          <div>
+            {isAdmin ? (
+              <span>
+                <strong>Quyền Quản Trị Viên Cao Nhất (ADMIN):</strong> Bạn có toàn quyền quyết định, chỉnh sửa, trình chiếu và xóa bất kỳ bài giảng, slide hay câu hỏi củng cố nào trên toàn hệ thống.
+              </span>
+            ) : (
+              <span>
+                <strong>Chế Độ Bảo Vệ Dữ Liệu Thành Viên:</strong> Bạn có quyền <strong>Soạn bài giảng mới</strong>, <strong>Soạn câu hỏi củng cố mới</strong>, <strong>Trình chiếu mọi bài giảng</strong> (của bạn và của thành viên khác), và chỉ được <strong>chỉnh sửa / xóa</strong> bài giảng hoặc câu hỏi củng cố do chính bạn biên soạn.
+              </span>
+            )}
+          </div>
         </div>
       </div>
 
@@ -542,6 +652,19 @@ export const LessonLibrary: React.FC<LessonLibraryProps> = ({
               const isActive = currentLessonId === lesson.id;
               const gradeLabel = extractLessonGradeLabel(lesson);
               const subjectLabel = extractLessonSubjectLabel(lesson);
+              const userCanEdit = canEditLesson(lesson, currentUser);
+              const userCanDelete = canDeleteLesson(lesson, currentUser);
+              const userCanPresent = canPresentLesson(lesson, currentUser);
+              const isOwnedByCurrentMember =
+                Boolean(
+                  currentUser &&
+                    ((lesson.createdByUid && lesson.createdByUid === currentUser.uid) ||
+                      (lesson.createdByUsername &&
+                        currentUser.username &&
+                        lesson.createdByUsername.trim().toLowerCase() ===
+                          currentUser.username.trim().toLowerCase()))
+                );
+              const creatorDisplay = getLessonCreatorDisplayName(lesson);
 
               return (
                 <div
@@ -567,7 +690,7 @@ export const LessonLibrary: React.FC<LessonLibraryProps> = ({
                       </div>
                       {isActive ? (
                         <span className="flex items-center gap-1 text-xs text-emerald-400 font-semibold shrink-0 whitespace-nowrap">
-                          <CheckCircle2 className="w-3.5 h-3.5" /> Đang dạy
+                          <CheckCircle2 className="w-3.5 h-3.5" /> Đang mở
                         </span>
                       ) : (
                         <span className="text-[11px] text-slate-500 flex items-center gap-1 shrink-0 whitespace-nowrap tabular-nums">
@@ -585,13 +708,28 @@ export const LessonLibrary: React.FC<LessonLibraryProps> = ({
                       {lesson.chapterOrTopic}
                     </p>
 
-                    {/* Author info if available */}
-                    {lesson.author && (
-                      <div className="flex items-center gap-1.5 text-xs text-sky-300 mb-3">
+                    {/* Author & Ownership Permission Badge */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                      <div className="flex items-center gap-1.5 text-xs text-sky-300 min-w-0">
                         <User className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-                        <span className="truncate">Tác giả: {lesson.author}</span>
+                        <span className="truncate">Tác giả: {creatorDisplay}</span>
                       </div>
-                    )}
+
+                      {isAdmin ? (
+                        <span className="px-2 py-0.5 rounded-md bg-amber-500/15 border border-amber-500/30 text-amber-300 text-[10px] font-bold shrink-0">
+                          Admin Toàn Quyền
+                        </span>
+                      ) : isOwnedByCurrentMember ? (
+                        <span className="px-2 py-0.5 rounded-md bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-[10px] font-bold shrink-0">
+                          Bài của bạn • Được Sửa & Xóa
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded-md bg-slate-800 border border-slate-700 text-slate-300 text-[10px] font-semibold flex items-center gap-1 shrink-0">
+                          <Lock className="w-2.5 h-2.5 text-amber-400" />
+                          <span>Chỉ Trình Chiếu</span>
+                        </span>
+                      )}
+                    </div>
 
                     {/* Features count */}
                     <div className="flex items-center gap-3 text-xs text-slate-300 mb-4 tabular-nums">
@@ -607,26 +745,48 @@ export const LessonLibrary: React.FC<LessonLibraryProps> = ({
                     </div>
                   </div>
 
-                  {/* Bottom Card Actions: Edit, Duplicate, Export, Delete */}
-                  <div className="flex items-center justify-between pt-3 border-t border-slate-800 text-xs gap-1">
-                    <div className="flex items-center gap-1">
-                      {/* Edit Lesson Info */}
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setEditingLesson(lesson);
-                          setIsEditModalOpen(true);
-                        }}
-                        title="Chỉnh sửa thông tin bài giảng"
-                        className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-indigo-600/30 text-slate-300 hover:text-indigo-300 border border-slate-700/80 flex items-center gap-1 transition-all cursor-pointer"
-                      >
-                        <Edit3 className="w-3.5 h-3.5" />
-                        <span className="text-[11px] hidden sm:inline">Sửa</span>
-                      </button>
+                  {/* Bottom Card Actions: Present (All logged-in users), Edit/Duplicate/Delete (Only Admin or Creator) */}
+                  <div className="flex items-center justify-between pt-3 border-t border-slate-800 text-xs gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {/* Trình Chiếu Button (Allowed for all logged-in users on all lessons) */}
+                      {userCanPresent && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (onPresentLesson) {
+                              onPresentLesson(lesson);
+                            } else {
+                              onSelectLesson(lesson);
+                            }
+                          }}
+                          title="Trình chiếu bài giảng này"
+                          className="px-2.5 py-1.5 rounded-lg bg-indigo-600/90 hover:bg-indigo-500 text-white font-bold flex items-center gap-1 transition-all cursor-pointer shadow-sm"
+                        >
+                          <Play className="w-3.5 h-3.5 fill-current" />
+                          <span className="text-[11px]">Trình chiếu</span>
+                        </button>
+                      )}
 
-                      {/* Duplicate Lesson */}
-                      {onDuplicateLesson && (
+                      {/* Edit Lesson Info (Strictly Admin or Lesson Creator) */}
+                      {userCanEdit && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingLesson(lesson);
+                            setIsEditModalOpen(true);
+                          }}
+                          title="Chỉnh sửa thông tin bài giảng"
+                          className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-indigo-600/30 text-slate-300 hover:text-indigo-300 border border-slate-700/80 flex items-center gap-1 transition-all cursor-pointer"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                          <span className="text-[11px] hidden sm:inline">Sửa</span>
+                        </button>
+                      )}
+
+                      {/* Duplicate Lesson (Strictly Admin or Lesson Creator) */}
+                      {userCanEdit && onDuplicateLesson && (
                         <button
                           type="button"
                           onClick={(e) => {
@@ -641,34 +801,47 @@ export const LessonLibrary: React.FC<LessonLibraryProps> = ({
                         </button>
                       )}
 
-                      {/* Export JSON */}
+                      {/* Export JSON (Only Admin or Lesson Creator) */}
+                      {userCanEdit && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleExportLesson(lesson);
+                          }}
+                          title="Xuất file JSON sao lưu"
+                          className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/80 flex items-center gap-1 transition-all cursor-pointer"
+                        >
+                          <Download className="w-3.5 h-3.5 text-emerald-400" />
+                          <span className="text-[11px] hidden sm:inline">JSON</span>
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Delete Lesson (Strictly Admin or Lesson Creator) */}
+                    {userCanDelete ? (
                       <button
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          handleExportLesson(lesson);
+                          setDeletingLesson(lesson);
+                          setIsDeleteModalOpen(true);
                         }}
-                        title="Xuất file JSON sao lưu"
-                        className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/80 flex items-center gap-1 transition-all cursor-pointer"
+                        title="Xóa bài giảng khỏi kho"
+                        className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-rose-950/50 text-slate-400 hover:text-rose-400 border border-slate-700/80 transition-colors cursor-pointer"
                       >
-                        <Download className="w-3.5 h-3.5 text-emerald-400" />
-                        <span className="text-[11px] hidden sm:inline">JSON</span>
+                        <Trash2 className="w-3.5 h-3.5" />
                       </button>
-                    </div>
-
-                    {/* Delete Lesson */}
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setDeletingLesson(lesson);
-                        setIsDeleteModalOpen(true);
-                      }}
-                      title="Xóa bài giảng khỏi kho"
-                      className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-rose-950/50 text-slate-400 hover:text-rose-400 border border-slate-700/80 transition-colors cursor-pointer"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                    ) : (
+                      <span
+                        onClick={(e) => e.stopPropagation()}
+                        title="Thành viên không có quyền chỉnh sửa hoặc xóa bài giảng do người khác soạn"
+                        className="px-2 py-1 rounded-lg bg-slate-950/80 border border-slate-800 text-slate-500 text-[10px] flex items-center gap-1 select-none"
+                      >
+                        <Lock className="w-3 h-3 text-slate-500" />
+                        <span>Bảo vệ</span>
+                      </span>
+                    )}
                   </div>
                 </div>
               );
@@ -697,23 +870,25 @@ export const LessonLibrary: React.FC<LessonLibraryProps> = ({
         </>
       )}
 
-      {/* Edit Lesson Modal */}
+      {/* Edit Lesson Modal (Strictly guarded by canEditLesson) */}
       <EditLessonModal
-        isOpen={isEditModalOpen}
+        isOpen={isEditModalOpen && canEditLesson(editingLesson, currentUser)}
         lesson={editingLesson}
         onClose={() => setIsEditModalOpen(false)}
         onSave={(updated) => {
-          onUpdateLesson(updated);
+          if (canEditLesson(editingLesson, currentUser)) {
+            onUpdateLesson(updated);
+          }
         }}
       />
 
-      {/* Delete Lesson Modal */}
+      {/* Delete Lesson Modal (Strictly guarded by canDeleteLesson) */}
       <DeleteLessonModal
-        isOpen={isDeleteModalOpen}
+        isOpen={isDeleteModalOpen && canDeleteLesson(deletingLesson, currentUser)}
         lesson={deletingLesson}
         onClose={() => setIsDeleteModalOpen(false)}
         onConfirm={() => {
-          if (deletingLesson) {
+          if (deletingLesson && canDeleteLesson(deletingLesson, currentUser)) {
             onDeleteLesson(deletingLesson.id);
           }
         }}

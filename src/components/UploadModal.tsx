@@ -15,13 +15,15 @@ import {
   RefreshCw,
   Clock
 } from 'lucide-react';
-import { GenerationConfig, MathLesson } from '../types';
+import { GenerationConfig, MathLesson, AppUser } from '../types';
 import { SAMPLE_LESSONS } from '../data/sampleLessons';
+import { stampNewLessonOwnership } from '../utils/permissions';
 
 interface UploadModalProps {
   isOpen: boolean;
   onClose: () => void;
   onLessonGenerated: (lesson: MathLesson) => void;
+  currentUser?: AppUser | null;
 }
 
 // Client-side image compression helper to reduce upload payload and Gemini token consumption
@@ -68,6 +70,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
   isOpen,
   onClose,
   onLessonGenerated,
+  currentUser,
 }) => {
   const [images, setImages] = useState<{ id: string; base64: string; name: string; size: string }[]>([]);
   const [isDragging, setIsDragging] = useState(false);
@@ -290,7 +293,8 @@ export const UploadModal: React.FC<UploadModalProps> = ({
       }
 
       if (data.lesson) {
-        onLessonGenerated(data.lesson);
+        const stamped = stampNewLessonOwnership(data.lesson, currentUser || null);
+        onLessonGenerated(stamped);
         onClose();
       }
     } catch (err: any) {
@@ -312,7 +316,14 @@ export const UploadModal: React.FC<UploadModalProps> = ({
 
   const handleUseFallbackSample = (sampleIndex = 0) => {
     const sample = SAMPLE_LESSONS[sampleIndex] || SAMPLE_LESSONS[0];
-    onLessonGenerated(sample);
+    const clonedSample: MathLesson = {
+      ...sample,
+      id: `lesson-ai-${Date.now()}`,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    const stamped = stampNewLessonOwnership(clonedSample, currentUser || null);
+    onLessonGenerated(stamped);
     onClose();
   };
 
