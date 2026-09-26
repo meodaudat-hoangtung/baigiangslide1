@@ -251,6 +251,10 @@ export type TextBoxAnimationEffect =
 export interface SlideTextBox {
   id: string;
   text: string;
+  imageUrl?: string; // Primary pasted or uploaded image (data URL or remote URL)
+  images?: string[]; // Additional or multiple pasted images inside the text box
+  imageFit?: 'contain' | 'cover'; // How pasted image fits inside the box
+  imagePosition?: 'top' | 'bottom'; // Position of image relative to text
   x?: number; // percentage from left (0 - 100)
   y?: number; // percentage from top (0 - 100)
   width?: number; // percentage width (e.g. 35)

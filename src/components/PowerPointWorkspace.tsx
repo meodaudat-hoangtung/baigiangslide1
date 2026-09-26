@@ -369,7 +369,11 @@ export const PowerPointWorkspace: React.FC<PowerPointWorkspaceProps> = ({
       title: 'Xác Nhận Xóa Hộp Chữ (Text Box)?',
       message:
         'Hành động này sẽ xóa vĩnh viễn hộp chữ ngay lập tức trên mọi thiết bị, mọi tab và không thể khôi phục.',
-      itemPreview: targetBox?.text ? `"${targetBox.text.slice(0, 100)}"` : 'Hộp chữ tự do (Text Box)',
+      itemPreview: targetBox?.text
+        ? `"${targetBox.text.slice(0, 100)}"`
+        : targetBox?.imageUrl || (targetBox?.images && targetBox.images.length > 0)
+        ? 'Hộp Text Box có chứa hình ảnh'
+        : 'Hộp chữ tự do (Text Box)',
       confirmLabel: 'Xóa Vĩnh Viễn',
       onConfirm: () => {
         const updated = (currentSlide.textBoxes || []).filter((b) => b.id !== boxId);
@@ -898,16 +902,21 @@ export const PowerPointWorkspace: React.FC<PowerPointWorkspaceProps> = ({
                     {/* Render Floating Text Boxes inside thumbnail */}
                     {slide.textBoxes &&
                       slide.textBoxes.map((box) => {
-                        if (!box.text || !box.text.trim()) return null;
-                        const cleanText = box.text.replace(/\$/g, '').trim();
+                        const hasText = !!(box.text && box.text.trim());
+                        const thumbImg =
+                          box.imageUrl || (box.images && box.images.length > 0 ? box.images[0] : undefined);
+                        if (!hasText && !thumbImg) return null;
+                        const cleanText = hasText ? box.text.replace(/\$/g, '').trim() : '';
                         return (
                           <div
                             key={box.id}
-                            className="absolute overflow-hidden truncate pointer-events-none select-none z-10"
+                            className="absolute overflow-hidden pointer-events-none select-none z-10 flex flex-col gap-0.5"
                             style={{
                               left: `${box.x}%`,
                               top: `${box.y}%`,
+                              width: box.width ? `${box.width}%` : undefined,
                               maxWidth: `${box.width || 80}%`,
+                              maxHeight: box.height ? `${box.height}%` : '45%',
                               fontSize: `${Math.max(6, Math.min(10, Math.round((box.fontSize || 24) * 0.28)))}px`,
                               color: box.color || '#ffffff',
                               fontWeight: box.fontWeight || 'normal',
@@ -916,7 +925,21 @@ export const PowerPointWorkspace: React.FC<PowerPointWorkspaceProps> = ({
                               lineHeight: 1.15,
                             }}
                           >
-                            {cleanText}
+                            {thumbImg && box.imagePosition === 'top' && (
+                              <img
+                                src={thumbImg}
+                                alt=""
+                                className="w-full max-h-8 object-contain rounded-[2px]"
+                              />
+                            )}
+                            {cleanText && <div className="truncate">{cleanText}</div>}
+                            {thumbImg && box.imagePosition !== 'top' && (
+                              <img
+                                src={thumbImg}
+                                alt=""
+                                className="w-full max-h-8 object-contain rounded-[2px]"
+                              />
+                            )}
                           </div>
                         );
                       })}

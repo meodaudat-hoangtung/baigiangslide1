@@ -26,10 +26,137 @@ import {
   Clock,
   ListOrdered,
   Eye,
-  EyeOff
+  EyeOff,
+  Image as ImageIcon,
+  Upload,
+  ClipboardPaste,
+  Plus
 } from 'lucide-react';
 import { SlideTextBox, TextBoxAnimationEffect } from '../types';
 import { MathView } from './MathView';
+
+// Helper to get all images attached to a SlideTextBox
+export const getTextBoxImages = (box: SlideTextBox): string[] => {
+  const list: string[] = [];
+  if (box.images && Array.isArray(box.images)) {
+    box.images.forEach((u) => {
+      if (u && typeof u === 'string' && u.trim() && !list.includes(u.trim())) {
+        list.push(u.trim());
+      }
+    });
+  }
+  if (box.imageUrl && typeof box.imageUrl === 'string' && box.imageUrl.trim()) {
+    const primary = box.imageUrl.trim();
+    if (!list.includes(primary)) {
+      list.unshift(primary);
+    }
+  }
+  return list;
+};
+
+// Compress image File/Blob to reasonably sized Data URL so Firestore & state remain fast
+const compressImageBlobToDataUrl = (blob: Blob, maxDimension = 1280): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Không thể đọc dữ liệu ảnh'));
+    reader.onload = () => {
+      const rawDataUrl = reader.result as string;
+      if (!rawDataUrl || blob.type === 'image/svg+xml' || blob.type === 'image/gif') {
+        resolve(rawDataUrl);
+        return;
+      }
+      const img = new window.Image();
+      img.onload = () => {
+        const w = img.naturalWidth || img.width;
+        const h = img.naturalHeight || img.height;
+        if (w <= maxDimension && h <= maxDimension && rawDataUrl.length < 280_000) {
+          resolve(rawDataUrl);
+          return;
+        }
+        const scale = Math.min(1, maxDimension / Math.max(w, h));
+        const targetW = Math.max(1, Math.round(w * scale));
+        const targetH = Math.max(1, Math.round(h * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = targetW;
+        canvas.height = targetH;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(rawDataUrl);
+          return;
+        }
+        ctx.drawImage(img, 0, 0, targetW, targetH);
+        const compressed = canvas.toDataURL('image/webp', 0.86);
+        resolve(compressed && compressed.startsWith('data:image/') ? compressed : rawDataUrl);
+      };
+      img.onerror = () => resolve(rawDataUrl);
+      img.src = rawDataUrl;
+    };
+    reader.readAsDataURL(blob);
+  });
+};
+
+// Extract image(s) from DataTransfer (clipboard paste or drag-and-drop)
+const extractImagesFromDataTransfer = async (dt: DataTransfer | null): Promise<string[]> => {
+  if (!dt) return [];
+  const imageBlobs: Blob[] = [];
+
+  if (dt.items && dt.items.length > 0) {
+    for (let i = 0; i < dt.items.length; i++) {
+      const item = dt.items[i];
+      if (item.kind === 'file' && item.type.startsWith('image/')) {
+        const file = item.getAsFile();
+        if (file) imageBlobs.push(file);
+      }
+    }
+  }
+
+  if (imageBlobs.length === 0 && dt.files && dt.files.length > 0) {
+    for (let i = 0; i < dt.files.length; i++) {
+      const file = dt.files[i];
+      if (file.type.startsWith('image/')) {
+        imageBlobs.push(file);
+      }
+    }
+  }
+
+  if (imageBlobs.length > 0) {
+    const urls = await Promise.all(imageBlobs.map((b) => compressImageBlobToDataUrl(b)));
+    return urls.filter(Boolean);
+  }
+
+  // Check if HTML content in clipboard contains an <img src="..."> tag (e.g. copied from web/Word/Docs)
+  try {
+    const htmlData = dt.getData('text/html');
+    if (htmlData && htmlData.includes('<img')) {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(htmlData, 'text/html');
+      const imgs = Array.from(doc.querySelectorAll('img'));
+      const htmlUrls = imgs
+        .map((img) => img.getAttribute('src') || '')
+        .filter((src) => src.startsWith('data:image/') || src.startsWith('http://') || src.startsWith('https://'));
+      if (htmlUrls.length > 0) {
+        return htmlUrls;
+      }
+    }
+  } catch {
+    // ignore HTML parse errors
+  }
+
+  // Check if plain text is a direct data:image/ URL or direct image link
+  try {
+    const plain = (dt.getData('text/plain') || '').trim();
+    if (
+      plain.startsWith('data:image/') ||
+      /^https?:\/\/\S+\.(png|jpe?g|gif|webp|svg)(\?\S*)?$/i.test(plain)
+    ) {
+      return [plain];
+    }
+  } catch {
+    // ignore
+  }
+
+  return [];
+};
 
 interface SlideTextBoxOverlayProps {
   textBoxes?: SlideTextBox[];
@@ -144,6 +271,12 @@ export const SlideTextBoxOverlay: React.FC<SlideTextBoxOverlayProps> = ({
   const [showColorPicker, setShowColorPicker] = useState<boolean>(false);
   const [showBgPicker, setShowBgPicker] = useState<boolean>(false);
   const [showAnimPicker, setShowAnimPicker] = useState<boolean>(false);
+  const [showImagePicker, setShowImagePicker] = useState<boolean>(false);
+  const [imageUrlInput, setImageUrlInput] = useState<string>('');
+  const [pasteFeedback, setPasteFeedback] = useState<{ boxId: string; message: string } | null>(null);
+  const [dragOverBoxId, setDragOverBoxId] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const fileInputTargetBoxIdRef = useRef<string | null>(null);
 
   // Map animated text boxes to 1-indexed step in the animation sequence
   const animatedBoxes = [...textBoxes]
@@ -242,7 +375,143 @@ export const SlideTextBoxOverlay: React.FC<SlideTextBoxOverlayProps> = ({
     if (editingTextId && selectedBoxId !== editingTextId) {
       setEditingTextId(null);
     }
+    setShowImagePicker(false);
   }, [selectedBoxId, editingTextId]);
+
+  const showBoxPasteFeedback = (boxId: string, message: string) => {
+    setPasteFeedback({ boxId, message });
+    setTimeout(() => {
+      setPasteFeedback((curr) => (curr?.boxId === boxId ? null : curr));
+    }, 2400);
+  };
+
+  // Append pasted or uploaded image(s) to a SlideTextBox
+  const appendImagesToTextBox = (box: SlideTextBox, newUrls: string[]) => {
+    if (!newUrls.length || !onUpdateTextBoxRef.current) return;
+    const existing = getTextBoxImages(box);
+    const merged = [...existing];
+    newUrls.forEach((u) => {
+      if (u && !merged.includes(u)) merged.push(u);
+    });
+
+    // If the box still has the default placeholder text, clear it automatically when pasting an image
+    const trimmedText = (box.text || '').trim();
+    const isDefaultPlaceholder =
+      trimmedText === 'Nhập nội dung văn bản...' || trimmedText === 'Nhập văn bản...';
+    const nextText = isDefaultPlaceholder && editingTextId !== box.id ? '' : box.text;
+
+    onUpdateTextBoxRef.current({
+      ...box,
+      text: nextText,
+      imageUrl: merged[0],
+      images: merged,
+      imageFit: box.imageFit || 'contain',
+      imagePosition: box.imagePosition || 'bottom',
+    });
+    showBoxPasteFeedback(box.id, `Đã dán ${newUrls.length} ảnh vào Text Box`);
+  };
+
+  // Remove a specific image from a SlideTextBox
+  const removeImageFromTextBox = (box: SlideTextBox, indexToRemove: number) => {
+    if (!onUpdateTextBoxRef.current) return;
+    const existing = getTextBoxImages(box);
+    const remaining = existing.filter((_, i) => i !== indexToRemove);
+    onUpdateTextBoxRef.current({
+      ...box,
+      imageUrl: remaining[0] || undefined,
+      images: remaining.length > 0 ? remaining : undefined,
+    });
+  };
+
+  // Programmatic clipboard paste button handler (for toolbar "Dán ảnh" button)
+  const handleToolbarPasteImage = async (box: SlideTextBox) => {
+    try {
+      if (navigator.clipboard && navigator.clipboard.read) {
+        const items = await navigator.clipboard.read();
+        const blobs: Blob[] = [];
+        for (const item of items) {
+          const imgType = item.types.find((t) => t.startsWith('image/'));
+          if (imgType) {
+            const blob = await item.getType(imgType);
+            blobs.push(blob);
+          }
+        }
+        if (blobs.length > 0) {
+          const urls = await Promise.all(blobs.map((b) => compressImageBlobToDataUrl(b)));
+          appendImagesToTextBox(box, urls.filter(Boolean));
+          setShowImagePicker(false);
+          return;
+        }
+      }
+      if (navigator.clipboard && navigator.clipboard.readText) {
+        const text = (await navigator.clipboard.readText()).trim();
+        if (
+          text.startsWith('data:image/') ||
+          /^https?:\/\/\S+\.(png|jpe?g|gif|webp|svg)(\?\S*)?$/i.test(text)
+        ) {
+          appendImagesToTextBox(box, [text]);
+          setShowImagePicker(false);
+          return;
+        }
+      }
+      showBoxPasteFeedback(box.id, 'Hãy nhấn Ctrl+V (hoặc Cmd+V) để dán ảnh đã sao chép');
+    } catch {
+      showBoxPasteFeedback(box.id, 'Hãy nhấn trực tiếp Ctrl+V (hoặc Cmd+V) để dán ảnh');
+    }
+  };
+
+  // Global clipboard paste listener when a Text Box is selected
+  useEffect(() => {
+    if (!isEditable || !selectedBoxId) return;
+
+    const handleWindowPaste = async (e: ClipboardEvent) => {
+      const targetBox = textBoxesRef.current.find((b) => b.id === selectedBoxId);
+      if (!targetBox) return;
+
+      // Check if user is pasting inside another input/textarea outside this text box
+      const activeEl = document.activeElement as HTMLElement | null;
+      const isInsideOtherInput =
+        activeEl &&
+        (activeEl.tagName === 'INPUT' ||
+          activeEl.tagName === 'TEXTAREA' ||
+          activeEl.isContentEditable) &&
+        !activeEl.closest(`[data-textbox-id="${selectedBoxId}"]`);
+
+      if (isInsideOtherInput) return;
+
+      const dt = e.clipboardData;
+      if (!dt) return;
+
+      // Check synchronously if there is an image file/item or HTML img or image URL before awaiting
+      const hasImageFile =
+        Array.from(dt.items || []).some((it) => it.type.startsWith('image/')) ||
+        Array.from(dt.files || []).some((f) => f.type.startsWith('image/'));
+      const htmlStr = dt.getData('text/html') || '';
+      const plainStr = (dt.getData('text/plain') || '').trim();
+      const hasHtmlImg = htmlStr.includes('<img') && !plainStr;
+      const isDirectImageUrl =
+        plainStr.startsWith('data:image/') ||
+        (!editingTextId && /^https?:\/\/\S+\.(png|jpe?g|gif|webp|svg)(\?\S*)?$/i.test(plainStr));
+
+      if (!hasImageFile && !hasHtmlImg && !isDirectImageUrl) {
+        return;
+      }
+
+      e.preventDefault();
+      e.stopPropagation();
+
+      const urls = await extractImagesFromDataTransfer(dt);
+      if (urls.length > 0) {
+        const latestBox = textBoxesRef.current.find((b) => b.id === selectedBoxId) || targetBox;
+        appendImagesToTextBox(latestBox, urls);
+      }
+    };
+
+    window.addEventListener('paste', handleWindowPaste, true);
+    return () => {
+      window.removeEventListener('paste', handleWindowPaste, true);
+    };
+  }, [isEditable, selectedBoxId, editingTextId]);
 
   // Dragging state
   const draggingBoxRef = useRef<{
@@ -662,11 +931,36 @@ export const SlideTextBoxOverlay: React.FC<SlideTextBoxOverlayProps> = ({
 
   return (
     <div ref={overlayRef} className="absolute inset-0 pointer-events-none z-20 overflow-visible">
+      {/* Hidden file input for uploading images into a Text Box */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        className="hidden"
+        onChange={async (e) => {
+          const files = Array.from(e.target.files || []).filter((f) => f.type.startsWith('image/'));
+          const targetId = fileInputTargetBoxIdRef.current || selectedBoxId;
+          e.target.value = '';
+          if (!files.length || !targetId) return;
+          const targetBox = textBoxesRef.current.find((b) => b.id === targetId);
+          if (!targetBox) return;
+          const urls = await Promise.all(files.map((f) => compressImageBlobToDataUrl(f)));
+          appendImagesToTextBox(targetBox, urls.filter(Boolean));
+          setShowImagePicker(false);
+        }}
+      />
+
       {textBoxes.map((box, idx) => {
         const isSelected = isEditable && selectedBoxId === box.id;
         const isEditing = isSelected && editingTextId === box.id;
         const isInteracting = activeInteractionId === box.id;
         const boxOverride = liveOverrides[box.id];
+        const boxImages = getTextBoxImages(box);
+        const hasImages = boxImages.length > 0;
+        const imageFit = box.imageFit || 'contain';
+        const imagePosition = box.imagePosition || 'bottom';
+        const isDragOver = dragOverBoxId === box.id;
 
         const posX = boxOverride?.x !== undefined ? boxOverride.x : box.x !== undefined ? box.x : 20;
         const posY = boxOverride?.y !== undefined ? boxOverride.y : box.y !== undefined ? box.y : 30;
@@ -794,7 +1088,9 @@ export const SlideTextBoxOverlay: React.FC<SlideTextBoxOverlayProps> = ({
             key={elementKey}
             data-textbox-id={box.id}
             className={`absolute pointer-events-auto select-none ${effectiveAnimClass} ${
-              isSelected
+              isDragOver
+                ? 'ring-2 ring-pink-500 bg-pink-500/15 rounded-lg shadow-2xl'
+                : isSelected
                 ? 'ring-2 ring-indigo-500 ring-offset-2 ring-offset-transparent shadow-xl rounded-lg'
                 : 'hover:ring-1 hover:ring-indigo-400/60 rounded-lg'
             } ${
@@ -843,7 +1139,40 @@ export const SlideTextBoxOverlay: React.FC<SlideTextBoxOverlayProps> = ({
                 setEditingTextId(box.id);
               }
             }}
+            onDragOver={(e) => {
+              if (!isEditable) return;
+              if (e.dataTransfer?.types?.includes('Files')) {
+                e.preventDefault();
+                e.stopPropagation();
+                if (dragOverBoxId !== box.id) setDragOverBoxId(box.id);
+              }
+            }}
+            onDragLeave={(e) => {
+              if (!isEditable) return;
+              e.stopPropagation();
+              if (dragOverBoxId === box.id) setDragOverBoxId(null);
+            }}
+            onDrop={async (e) => {
+              if (!isEditable) return;
+              e.preventDefault();
+              e.stopPropagation();
+              setDragOverBoxId(null);
+              if (onSelectBox && selectedBoxId !== box.id) {
+                onSelectBox(box.id);
+              }
+              const urls = await extractImagesFromDataTransfer(e.dataTransfer);
+              if (urls.length > 0) {
+                appendImagesToTextBox(box, urls);
+              }
+            }}
           >
+            {/* PASTE FEEDBACK TOAST ON BOX */}
+            {pasteFeedback && pasteFeedback.boxId === box.id && (
+              <div className="absolute -top-8 left-1/2 -translate-x-1/2 z-50 px-2.5 py-1 rounded-full bg-emerald-600 border border-emerald-300/60 text-white text-[11px] font-bold flex items-center gap-1.5 shadow-xl whitespace-nowrap animate-in fade-in zoom-in-95 duration-150">
+                <Check className="w-3 h-3 text-emerald-100" />
+                <span>{pasteFeedback.message}</span>
+              </div>
+            )}
             {/* ANIMATION BADGE (Hiển thị khi Text Box có cài hiệu ứng) */}
             {isEditable && hasAnimation && !isEditing && (
               <div
@@ -1038,7 +1367,7 @@ export const SlideTextBoxOverlay: React.FC<SlideTextBoxOverlayProps> = ({
                   type="button"
                   onClick={() => setEditingTextId(editingTextId === box.id ? null : box.id)}
                   title="Nhập / Sửa nội dung văn bản & công thức toán"
-                  className={`px-1.5 py-0.5 rounded text-[11px] font-bold flex items-center gap-1 transition-colors ${
+                  className={`px-1.5 py-0.5 rounded text-[11px] font-bold flex items-center gap-1 transition-colors cursor-pointer ${
                     editingTextId === box.id
                       ? 'bg-indigo-600 text-white shadow-xs'
                       : 'text-indigo-300 hover:text-white hover:bg-slate-800'
@@ -1047,6 +1376,201 @@ export const SlideTextBoxOverlay: React.FC<SlideTextBoxOverlayProps> = ({
                   <Edit3 className="w-3 h-3" />
                   <span>Sửa chữ</span>
                 </button>
+
+                {/* Dán / Chèn Ảnh vào Text Box */}
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowImagePicker(!showImagePicker);
+                      setShowColorPicker(false);
+                      setShowBgPicker(false);
+                      setShowAnimPicker(false);
+                    }}
+                    title="Dán ảnh (Ctrl+V) hoặc tải ảnh lên vào hộp Text Box"
+                    className={`px-1.5 py-0.5 rounded text-[11px] font-bold flex items-center gap-1 transition-colors cursor-pointer ${
+                      showImagePicker || hasImages
+                        ? 'bg-pink-600 text-white shadow-xs'
+                        : 'text-pink-300 hover:text-white hover:bg-slate-800'
+                    }`}
+                  >
+                    <ImageIcon className="w-3.5 h-3.5" />
+                    <span>Ảnh{hasImages ? ` (${boxImages.length})` : ''}</span>
+                  </button>
+
+                  {showImagePicker && (
+                    <div
+                      className="absolute left-0 bottom-full mb-2 bg-slate-950/98 border border-pink-500/50 p-3 rounded-2xl shadow-2xl flex flex-col gap-2.5 z-50 w-72 text-white backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150 whitespace-normal"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="flex items-center justify-between pb-1.5 border-b border-slate-800">
+                        <div className="flex items-center gap-1.5 text-xs font-bold text-pink-300">
+                          <ImageIcon className="w-3.5 h-3.5 text-pink-400" />
+                          <span>Dán & Chèn Ảnh Vào Text Box</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setShowImagePicker(false)}
+                          className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+
+                      {/* Quick Paste & Upload Buttons */}
+                      <div className="grid grid-cols-2 gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => handleToolbarPasteImage(box)}
+                          className="px-2.5 py-2 rounded-xl bg-pink-600 hover:bg-pink-500 text-white font-bold text-[11px] flex items-center justify-center gap-1.5 shadow-md shadow-pink-600/20 cursor-pointer transition-all"
+                          title="Dán ảnh đang có trong bộ nhớ tạm (hoặc nhấn Ctrl+V)"
+                        >
+                          <ClipboardPaste className="w-3.5 h-3.5 shrink-0" />
+                          <span>Dán ảnh (Ctrl+V)</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            fileInputTargetBoxIdRef.current = box.id;
+                            fileInputRef.current?.click();
+                          }}
+                          className="px-2.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-100 font-bold text-[11px] flex items-center justify-center gap-1.5 cursor-pointer transition-all"
+                          title="Chọn tệp hình ảnh từ máy tính"
+                        >
+                          <Upload className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                          <span>Tải ảnh lên</span>
+                        </button>
+                      </div>
+
+                      {/* Paste Image URL Input */}
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="text"
+                          value={imageUrlInput}
+                          onChange={(e) => setImageUrlInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && imageUrlInput.trim()) {
+                              e.preventDefault();
+                              appendImagesToTextBox(box, [imageUrlInput.trim()]);
+                              setImageUrlInput('');
+                            }
+                          }}
+                          placeholder="Hoặc dán link ảnh (https://...)"
+                          className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-[11px] text-white outline-none focus:border-pink-500"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (imageUrlInput.trim()) {
+                              appendImagesToTextBox(box, [imageUrlInput.trim()]);
+                              setImageUrlInput('');
+                            }
+                          }}
+                          className="px-2 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-bold cursor-pointer shrink-0"
+                        >
+                          Chèn
+                        </button>
+                      </div>
+
+                      <div className="text-[10px] text-slate-400 bg-slate-900/90 border border-slate-800 rounded-lg px-2 py-1.5 leading-snug">
+                        💡 <strong className="text-pink-300">Mẹo nhanh:</strong> Chụp màn hình (<code className="text-amber-300">Win+Shift+S</code>) hoặc Copy ảnh bất kỳ rồi nhấn <code className="text-amber-300 font-bold">Ctrl + V</code> ngay khi đang chọn hộp này!
+                      </div>
+
+                      {/* Image Layout & Existing Images Management */}
+                      {hasImages && (
+                        <div className="pt-2 border-t border-slate-800 space-y-2 text-[11px]">
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-400">Khớp khung:</span>
+                            <div className="flex items-center gap-1 bg-slate-900 p-0.5 rounded-lg border border-slate-800">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  onUpdateTextBox && onUpdateTextBox({ ...box, imageFit: 'contain' })
+                                }
+                                className={`px-2 py-0.5 rounded text-[10px] font-bold cursor-pointer ${
+                                  imageFit === 'contain'
+                                    ? 'bg-pink-600 text-white'
+                                    : 'text-slate-400 hover:text-white'
+                                }`}
+                              >
+                                Vừa khung
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  onUpdateTextBox && onUpdateTextBox({ ...box, imageFit: 'cover' })
+                                }
+                                className={`px-2 py-0.5 rounded text-[10px] font-bold cursor-pointer ${
+                                  imageFit === 'cover'
+                                    ? 'bg-pink-600 text-white'
+                                    : 'text-slate-400 hover:text-white'
+                                }`}
+                              >
+                                Lấp đầy
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-400">Vị trí ảnh:</span>
+                            <div className="flex items-center gap-1 bg-slate-900 p-0.5 rounded-lg border border-slate-800">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  onUpdateTextBox && onUpdateTextBox({ ...box, imagePosition: 'top' })
+                                }
+                                className={`px-2 py-0.5 rounded text-[10px] font-bold cursor-pointer ${
+                                  imagePosition === 'top'
+                                    ? 'bg-pink-600 text-white'
+                                    : 'text-slate-400 hover:text-white'
+                                }`}
+                              >
+                                Trên chữ
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  onUpdateTextBox && onUpdateTextBox({ ...box, imagePosition: 'bottom' })
+                                }
+                                className={`px-2 py-0.5 rounded text-[10px] font-bold cursor-pointer ${
+                                  imagePosition === 'bottom'
+                                    ? 'bg-pink-600 text-white'
+                                    : 'text-slate-400 hover:text-white'
+                                }`}
+                              >
+                                Dưới chữ
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Thumbnails of attached images */}
+                          <div className="grid grid-cols-3 gap-1.5 pt-1 max-h-28 overflow-y-auto">
+                            {boxImages.map((imgUrl, imgIdx) => (
+                              <div
+                                key={imgIdx}
+                                className="relative group/img aspect-video rounded-lg overflow-hidden bg-slate-900 border border-slate-700"
+                              >
+                                <img
+                                  src={imgUrl}
+                                  alt={`Ảnh ${imgIdx + 1}`}
+                                  className="w-full h-full object-cover"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => removeImageFromTextBox(box, imgIdx)}
+                                  title="Xóa ảnh này"
+                                  className="absolute top-0.5 right-0.5 p-0.5 rounded-md bg-rose-600/90 hover:bg-rose-500 text-white opacity-0 group-hover/img:opacity-100 transition-opacity cursor-pointer"
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
 
                 {/* Text Color Picker Toggle */}
                 <div className="relative">
@@ -1391,7 +1915,7 @@ export const SlideTextBoxOverlay: React.FC<SlideTextBoxOverlayProps> = ({
             <div className="p-2 relative min-h-[36px] h-full flex flex-col justify-center">
               {isEditing ? (
                 <div className="space-y-2 bg-slate-950/95 p-2.5 rounded-xl border border-indigo-500/60 shadow-2xl backdrop-blur-md">
-                  {/* Textarea input */}
+                  {/* Textarea input with direct image paste support */}
                   <textarea
                     autoFocus
                     value={box.text || ''}
@@ -1400,13 +1924,28 @@ export const SlideTextBoxOverlay: React.FC<SlideTextBoxOverlayProps> = ({
                         onUpdateTextBox({ ...box, text: e.target.value });
                       }
                     }}
+                    onPaste={async (e) => {
+                      const dt = e.clipboardData;
+                      if (!dt) return;
+                      const hasImage =
+                        Array.from(dt.items || []).some((it) => it.type.startsWith('image/')) ||
+                        Array.from(dt.files || []).some((f) => f.type.startsWith('image/'));
+                      if (hasImage) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const urls = await extractImagesFromDataTransfer(dt);
+                        if (urls.length > 0) {
+                          appendImagesToTextBox(box, urls);
+                        }
+                      }
+                    }}
                     onKeyDown={(e) => {
                       if (e.key === 'Escape') {
                         setEditingTextId(null);
                       }
                     }}
                     rows={Math.max(2, (box.text || '').split('\n').length)}
-                    placeholder="Nhập nội dung văn bản..."
+                    placeholder="Nhập văn bản, công thức $...$ hoặc nhấn Ctrl+V để dán ảnh..."
                     className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white outline-none resize-y leading-relaxed font-sans shadow-inner focus:border-indigo-400 min-h-[50px] text-xs sm:text-sm"
                     style={{
                       color: color,
@@ -1414,8 +1953,68 @@ export const SlideTextBoxOverlay: React.FC<SlideTextBoxOverlayProps> = ({
                     }}
                   />
 
-                  {/* Clean save button */}
-                  <div className="flex items-center justify-end pt-0.5">
+                  {/* Pasted images preview inside editor */}
+                  {hasImages && (
+                    <div className="flex flex-wrap items-center gap-2 pt-1">
+                      {boxImages.map((imgUrl, imgIdx) => (
+                        <div
+                          key={imgIdx}
+                          className="relative group/editimg w-16 h-12 rounded-lg overflow-hidden bg-slate-900 border border-slate-700 shrink-0"
+                        >
+                          <img
+                            src={imgUrl}
+                            alt={`Ảnh ${imgIdx + 1}`}
+                            className="w-full h-full object-cover"
+                          />
+                          <button
+                            type="button"
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              removeImageFromTextBox(box, imgIdx);
+                            }}
+                            title="Xóa ảnh này khỏi Text Box"
+                            className="absolute top-0.5 right-0.5 p-0.5 rounded bg-rose-600 text-white hover:bg-rose-500 cursor-pointer shadow"
+                          >
+                            <X className="w-2.5 h-2.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Quick image actions & Done button */}
+                  <div className="flex items-center justify-between gap-2 pt-0.5">
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleToolbarPasteImage(box);
+                        }}
+                        className="px-2 py-1 rounded-lg bg-pink-600/20 hover:bg-pink-600/40 border border-pink-500/40 text-pink-200 text-[11px] font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                        title="Dán ảnh từ bộ nhớ tạm (Ctrl+V)"
+                      >
+                        <ClipboardPaste className="w-3 h-3 text-pink-400" />
+                        <span>Dán ảnh (Ctrl+V)</span>
+                      </button>
+                      <button
+                        type="button"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          fileInputTargetBoxIdRef.current = box.id;
+                          fileInputRef.current?.click();
+                        }}
+                        className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 text-[11px] font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                        title="Tải ảnh từ máy tính"
+                      >
+                        <Upload className="w-3 h-3 text-sky-400" />
+                        <span>Chọn ảnh</span>
+                      </button>
+                    </div>
+
                     <button
                       type="button"
                       onMouseDown={(e) => {
@@ -1433,7 +2032,7 @@ export const SlideTextBoxOverlay: React.FC<SlideTextBoxOverlayProps> = ({
               ) : (
                 /* RENDERED SLIDE DISPLAY */
                 <div
-                  className={`leading-relaxed min-h-[32px] h-full p-1.5 transition-colors rounded flex flex-col justify-center overflow-hidden ${
+                  className={`leading-relaxed min-h-[32px] h-full p-1.5 transition-colors rounded flex flex-col justify-center overflow-hidden gap-2 ${
                     isEditable
                       ? isInteracting
                         ? 'cursor-grabbing'
@@ -1443,7 +2042,7 @@ export const SlideTextBoxOverlay: React.FC<SlideTextBoxOverlayProps> = ({
                   title={
                     isEditable
                       ? isSelected
-                        ? 'Kéo thân hộp để di chuyển | Kéo 8 điểm neo quanh viền (hoặc Alt + Phím mũi tên) để chỉnh kích thước tùy ý'
+                        ? 'Kéo thân hộp để di chuyển | Nhấn Ctrl+V để dán ảnh vào hộp | Kéo 8 điểm neo quanh viền để chỉnh kích thước'
                         : 'Nhấp để chọn hoặc giữ chuột kéo để di chuyển vị trí Text Box'
                       : undefined
                   }
@@ -1455,16 +2054,99 @@ export const SlideTextBoxOverlay: React.FC<SlideTextBoxOverlayProps> = ({
                     textAlign: textAlign,
                   }}
                 >
+                  {/* Render images above text if imagePosition === 'top' */}
+                  {hasImages && imagePosition === 'top' && (
+                    <div
+                      className={`w-full ${
+                        !box.text || !box.text.trim() ? 'flex-1 min-h-0' : ''
+                      } ${
+                        boxImages.length > 1 ? 'grid grid-cols-2 gap-1.5' : 'flex items-center justify-center'
+                      }`}
+                    >
+                      {boxImages.map((imgUrl, imgIdx) => (
+                        <div
+                          key={imgIdx}
+                          className="relative group/boximg w-full h-full flex items-center justify-center overflow-hidden rounded-md"
+                        >
+                          <img
+                            src={imgUrl}
+                            alt=""
+                            draggable={false}
+                            className={`w-full h-full max-h-full rounded-md select-none pointer-events-none ${
+                              imageFit === 'cover' ? 'object-cover' : 'object-contain'
+                            }`}
+                          />
+                          {isSelected && isEditable && (
+                            <button
+                              type="button"
+                              onMouseDown={(e) => e.stopPropagation()}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                removeImageFromTextBox(box, imgIdx);
+                              }}
+                              title="Xóa ảnh này khỏi Text Box"
+                              className="absolute top-1 right-1 p-1 rounded-full bg-slate-950/80 hover:bg-rose-600 text-white border border-white/20 opacity-0 group-hover/boximg:opacity-100 transition-opacity shadow-md cursor-pointer pointer-events-auto z-20"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Text / Math Formula Content */}
                   {box.text && box.text.trim().length > 0 ? (
                     <MathView
                       content={box.text}
                       text={box.text}
                       className={textAlign === 'justify' ? 'text-justify w-full' : 'w-full'}
                     />
-                  ) : (
+                  ) : !hasImages ? (
                     <span className="opacity-60 italic text-amber-200/90 text-sm block">
-                      Nhấp vào đây để nhập văn bản hoặc công thức toán...
+                      Nhấp đúp để nhập chữ hoặc nhấn Ctrl+V để dán ảnh...
                     </span>
+                  ) : null}
+
+                  {/* Render images below text if imagePosition === 'bottom' (default) */}
+                  {hasImages && imagePosition !== 'top' && (
+                    <div
+                      className={`w-full ${
+                        !box.text || !box.text.trim() ? 'flex-1 min-h-0 h-full' : ''
+                      } ${
+                        boxImages.length > 1 ? 'grid grid-cols-2 gap-1.5' : 'flex items-center justify-center'
+                      }`}
+                    >
+                      {boxImages.map((imgUrl, imgIdx) => (
+                        <div
+                          key={imgIdx}
+                          className="relative group/boximg w-full h-full flex items-center justify-center overflow-hidden rounded-md"
+                        >
+                          <img
+                            src={imgUrl}
+                            alt=""
+                            draggable={false}
+                            className={`w-full h-full max-h-full rounded-md select-none pointer-events-none ${
+                              imageFit === 'cover' ? 'object-cover' : 'object-contain'
+                            }`}
+                          />
+                          {isSelected && isEditable && (
+                            <button
+                              type="button"
+                              onMouseDown={(e) => e.stopPropagation()}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                removeImageFromTextBox(box, imgIdx);
+                              }}
+                              title="Xóa ảnh này khỏi Text Box"
+                              className="absolute top-1 right-1 p-1 rounded-full bg-slate-950/80 hover:bg-rose-600 text-white border border-white/20 opacity-0 group-hover/boximg:opacity-100 transition-opacity shadow-md cursor-pointer pointer-events-auto z-20"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   )}
                 </div>
               )}
