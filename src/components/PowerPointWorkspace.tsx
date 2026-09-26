@@ -140,8 +140,176 @@ export const PowerPointWorkspace: React.FC<PowerPointWorkspaceProps> = ({
   const [revealedExampleSteps, setRevealedExampleSteps] = useState<Record<string, number>>({});
   const [practiceToggles, setPracticeToggles] = useState<Record<string, boolean>>({});
 
-  // PowerPoint Text Box state
+  // PowerPoint Text Box & Block selection state
   const [selectedTextBoxId, setSelectedTextBoxId] = useState<string | null>(null);
+  const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
+  const slideCanvasRef = useRef<HTMLDivElement>(null);
+
+  // Live 60fps overrides while resizing/moving a SlideContentBlock with the mouse
+  const [liveBlockOverrides, setLiveBlockOverrides] = useState<
+    Record<string, { widthPercent?: number; minHeightPx?: number; offsetXPercent?: number }>
+  >({});
+  const liveBlockOverridesRef = useRef<
+    Record<string, { widthPercent?: number; minHeightPx?: number; offsetXPercent?: number }>
+  >({});
+  const [activeResizingBlockId, setActiveResizingBlockId] = useState<string | null>(null);
+
+  type BlockResizeDir = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
+  const resizingBlockRef = useRef<{
+    id: string;
+    direction: BlockResizeDir;
+    startX: number;
+    startY: number;
+    initialWidthPercent: number;
+    initialHeightPx: number;
+    initialOffsetXPercent: number;
+    containerWidth: number;
+    scaleFactor: number;
+    affectsVertical: boolean;
+    hasMoved: boolean;
+  } | null>(null);
+
+  const currentSlideRef = useRef(currentSlide);
+  currentSlideRef.current = currentSlide;
+  const onUpdateSlideRef = useRef(onUpdateSlide);
+  onUpdateSlideRef.current = onUpdateSlide;
+
+  const startResizingBlock = (
+    e: React.MouseEvent,
+    block: SlideContentBlock,
+    direction: BlockResizeDir,
+    curWidthPercent: number,
+    curMinHeightPx: number | undefined,
+    curOffsetXPercent: number
+  ) => {
+    if (readOnly || e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const canvasEl = slideCanvasRef.current;
+    if (!canvasEl) return;
+    const canvasRect = canvasEl.getBoundingClientRect();
+    if (canvasRect.width <= 0) return;
+
+    const blockEl = canvasEl.querySelector(`[data-block-id="${block.id}"]`) as HTMLElement | null;
+    const blockRect = blockEl?.getBoundingClientRect();
+    const scaleFactor = zoomLevel / 100;
+    const measuredHeightPx =
+      curMinHeightPx !== undefined
+        ? curMinHeightPx
+        : blockRect
+        ? Math.round(blockRect.height / scaleFactor)
+        : 120;
+
+    setSelectedBlockId(block.id);
+    setSelectedTextBoxId(null);
+    setActiveResizingBlockId(block.id);
+
+    resizingBlockRef.current = {
+      id: block.id,
+      direction,
+      startX: e.clientX,
+      startY: e.clientY,
+      initialWidthPercent: curWidthPercent,
+      initialHeightPx: Math.max(48, measuredHeightPx),
+      initialOffsetXPercent: curOffsetXPercent,
+      containerWidth: canvasRect.width,
+      scaleFactor,
+      affectsVertical: direction.includes('n') || direction.includes('s'),
+      hasMoved: false,
+    };
+  };
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!resizingBlockRef.current) return;
+      const r = resizingBlockRef.current;
+      r.hasMoved = true;
+
+      const canvasRect = slideCanvasRef.current?.getBoundingClientRect();
+      const cWidth = canvasRect && canvasRect.width > 0 ? canvasRect.width : r.containerWidth;
+
+      const dxPercent = ((e.clientX - r.startX) / cWidth) * 100;
+      const dyCanvasPx = (e.clientY - r.startY) / (r.scaleFactor || 1);
+
+      let nextW = r.initialWidthPercent;
+      let nextOffsetX = r.initialOffsetXPercent;
+      let nextH = r.initialHeightPx;
+
+      if (r.direction.includes('e')) {
+        nextW = Math.max(20, Math.min(100 - r.initialOffsetXPercent, r.initialWidthPercent + dxPercent));
+      }
+      if (r.direction.includes('w')) {
+        const rightEdge = r.initialOffsetXPercent + r.initialWidthPercent;
+        nextOffsetX = Math.max(0, Math.min(rightEdge - 20, r.initialOffsetXPercent + dxPercent));
+        nextW = rightEdge - nextOffsetX;
+      }
+      if (r.direction.includes('s')) {
+        nextH = Math.max(48, Math.min(520, r.initialHeightPx + dyCanvasPx));
+      }
+      if (r.direction.includes('n')) {
+        nextH = Math.max(48, Math.min(520, r.initialHeightPx - dyCanvasPx));
+      }
+
+      const nextOverride: { widthPercent?: number; minHeightPx?: number; offsetXPercent?: number } = {
+        ...liveBlockOverridesRef.current[r.id],
+        widthPercent: Math.round(nextW * 10) / 10,
+        offsetXPercent: Math.round(nextOffsetX * 10) / 10,
+      };
+      if (r.affectsVertical) {
+        nextOverride.minHeightPx = Math.round(nextH);
+      }
+
+      liveBlockOverridesRef.current = {
+        ...liveBlockOverridesRef.current,
+        [r.id]: nextOverride,
+      };
+      setLiveBlockOverrides({ ...liveBlockOverridesRef.current });
+    };
+
+    const handleMouseUp = () => {
+      if (!resizingBlockRef.current) return;
+      const r = resizingBlockRef.current;
+      const override = liveBlockOverridesRef.current[r.id];
+      resizingBlockRef.current = null;
+      setActiveResizingBlockId(null);
+
+      if (r.hasMoved && override && currentSlideRef.current) {
+        const blocksList = getSlideBlocks(currentSlideRef.current);
+        const updatedBlocks = blocksList.map((b) => {
+          if (b.id !== r.id) return b;
+          const newW = override.widthPercent !== undefined ? override.widthPercent : b.blockWidthPercent;
+          return {
+            ...b,
+            blockWidthPercent: newW,
+            blockOffsetXPercent:
+              override.offsetXPercent !== undefined ? override.offsetXPercent : b.blockOffsetXPercent,
+            blockMinHeightPx:
+              override.minHeightPx !== undefined ? override.minHeightPx : b.blockMinHeightPx,
+            ...(b.type === 'image' && newW !== undefined ? { imageWidthPercent: Math.round(newW) } : {}),
+            ...(b.type === 'media' && newW !== undefined ? { mediaWidthPercent: Math.round(newW) } : {}),
+          };
+        });
+        onUpdateSlideRef.current({
+          ...currentSlideRef.current,
+          blocks: updatedBlocks,
+        });
+      }
+
+      if (liveBlockOverridesRef.current[r.id]) {
+        const copy = { ...liveBlockOverridesRef.current };
+        delete copy[r.id];
+        liveBlockOverridesRef.current = copy;
+        setLiveBlockOverrides(copy);
+      }
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, []);
 
   // Slide Zoom state (50% to 200%, mặc định 100%)
   const [zoomLevel, setZoomLevel] = useState<number>(100);
@@ -260,7 +428,7 @@ export const PowerPointWorkspace: React.FC<PowerPointWorkspaceProps> = ({
         return;
       }
 
-      // When a Text Box is selected, arrow keys move the Text Box instead of switching slides
+      // When a Text Box is selected, arrow keys move/resize the Text Box instead of switching slides
       if (
         selectedTextBoxId &&
         !readOnly &&
@@ -270,6 +438,70 @@ export const PowerPointWorkspace: React.FC<PowerPointWorkspaceProps> = ({
           e.key === 'ArrowDown')
       ) {
         return;
+      }
+
+      // When a Slide Block is selected, arrow keys resize or position the Block along directions
+      if (
+        selectedBlockId &&
+        !readOnly &&
+        currentSlideRef.current &&
+        (e.key === 'ArrowLeft' ||
+          e.key === 'ArrowRight' ||
+          e.key === 'ArrowUp' ||
+          e.key === 'ArrowDown')
+      ) {
+        const blocksList = getSlideBlocks(currentSlideRef.current);
+        const targetBlock = blocksList.find((b) => b.id === selectedBlockId);
+        if (targetBlock) {
+          e.preventDefault();
+          e.stopPropagation();
+
+          const step = e.shiftKey ? 0.5 : 2;
+          const curW =
+            targetBlock.blockWidthPercent !== undefined
+              ? targetBlock.blockWidthPercent
+              : targetBlock.type === 'image' && targetBlock.imageWidthPercent
+              ? targetBlock.imageWidthPercent
+              : 100;
+          const curOffset = targetBlock.blockOffsetXPercent || 0;
+          const curH = targetBlock.blockMinHeightPx || 120;
+
+          let nextW = curW;
+          let nextOffset = curOffset;
+          let nextH = targetBlock.blockMinHeightPx;
+
+          if (e.altKey) {
+            // Alt + Arrows: explicitly resize width / height
+            if (e.key === 'ArrowRight') nextW = Math.min(100 - curOffset, curW + step);
+            if (e.key === 'ArrowLeft') nextW = Math.max(20, curW - step);
+            if (e.key === 'ArrowDown') nextH = Math.min(520, curH + step * 5);
+            if (e.key === 'ArrowUp') nextH = Math.max(48, curH - step * 5);
+          } else {
+            // Direct Arrows on selected block: Left/Right resizes width (or shifts if holding Ctrl), Up/Down resizes height
+            if (e.key === 'ArrowRight') nextW = Math.min(100 - curOffset, curW + step);
+            if (e.key === 'ArrowLeft') nextW = Math.max(20, curW - step);
+            if (e.key === 'ArrowDown') nextH = Math.min(520, curH + step * 5);
+            if (e.key === 'ArrowUp') nextH = Math.max(48, curH - step * 5);
+          }
+
+          const updatedBlocks = blocksList.map((b) =>
+            b.id === targetBlock.id
+              ? {
+                  ...b,
+                  blockWidthPercent: Math.round(nextW * 10) / 10,
+                  blockOffsetXPercent: Math.round(nextOffset * 10) / 10,
+                  ...(nextH !== undefined ? { blockMinHeightPx: Math.round(nextH) } : {}),
+                  ...(b.type === 'image' ? { imageWidthPercent: Math.round(nextW) } : {}),
+                  ...(b.type === 'media' ? { mediaWidthPercent: Math.round(nextW) } : {}),
+                }
+              : b
+          );
+          onUpdateSlideRef.current({
+            ...currentSlideRef.current,
+            blocks: updatedBlocks,
+          });
+          return;
+        }
       }
 
       if (e.key === 'ArrowRight' || e.key === 'PageDown') {
@@ -301,7 +533,7 @@ export const PowerPointWorkspace: React.FC<PowerPointWorkspaceProps> = ({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [safeIndex, slides.length, onSelectSlide, isFullscreen, selectedTextBoxId, readOnly]);
+  }, [safeIndex, slides.length, onSelectSlide, isFullscreen, selectedTextBoxId, selectedBlockId, readOnly]);
 
   // Add a blank slide after current slide
   const handleAddNewBlankSlide = () => {
@@ -1206,6 +1438,7 @@ export const PowerPointWorkspace: React.FC<PowerPointWorkspaceProps> = ({
               }}
             >
               <div
+                ref={slideCanvasRef}
                 className="w-[960px] h-[540px] rounded-xl overflow-hidden flex flex-col absolute top-0 left-0 border border-slate-800/40"
                 style={{
                   backgroundColor: slideBgColor,
@@ -1219,6 +1452,9 @@ export const PowerPointWorkspace: React.FC<PowerPointWorkspaceProps> = ({
                   if (!target?.closest('[data-textbox-id]')) {
                     setSelectedTextBoxId(null);
                   }
+                  if (!target?.closest('[data-block-id]')) {
+                    setSelectedBlockId(null);
+                  }
                 }}
               >
               {/* PowerPoint Floating Text Boxes Overlay */}
@@ -1227,7 +1463,10 @@ export const PowerPointWorkspace: React.FC<PowerPointWorkspaceProps> = ({
                 isEditable={!readOnly}
                 selectedBoxId={readOnly ? null : selectedTextBoxId}
                 onSelectBox={(id) => {
-                  if (!readOnly) setSelectedTextBoxId(id);
+                  if (!readOnly) {
+                    setSelectedTextBoxId(id);
+                    if (id) setSelectedBlockId(null);
+                  }
                 }}
                 onUpdateTextBox={(box) => {
                   if (!readOnly) handleUpdateTextBox(box);
@@ -1249,16 +1488,144 @@ export const PowerPointWorkspace: React.FC<PowerPointWorkspaceProps> = ({
                     if (readOnly && block.isHidden) return null;
                     const badge = getBlockHeaderBadge(block.type);
                     const Icon = badge.icon;
+                    const isBlockSelected = !readOnly && selectedBlockId === block.id;
+                    const isBlockResizing = activeResizingBlockId === block.id;
+                    const bOverride = liveBlockOverrides[block.id];
+
+                    const blockWidthVal =
+                      bOverride?.widthPercent !== undefined
+                        ? bOverride.widthPercent
+                        : block.blockWidthPercent !== undefined
+                        ? block.blockWidthPercent
+                        : 100;
+                    const blockMinHeightVal =
+                      bOverride?.minHeightPx !== undefined
+                        ? bOverride.minHeightPx
+                        : block.blockMinHeightPx;
+                    const blockOffsetXVal =
+                      bOverride?.offsetXPercent !== undefined
+                        ? bOverride.offsetXPercent
+                        : block.blockOffsetXPercent || 0;
 
                     return (
                       <div
                         key={block.id || bIdx}
+                        data-block-id={block.id}
+                        onClick={(e) => {
+                          if (!readOnly) {
+                            e.stopPropagation();
+                            setSelectedBlockId(block.id);
+                            setSelectedTextBoxId(null);
+                          }
+                        }}
+                        style={{
+                          width: `${blockWidthVal}%`,
+                          minHeight: blockMinHeightVal !== undefined ? `${blockMinHeightVal}px` : undefined,
+                          marginLeft: blockOffsetXVal > 0 ? `${blockOffsetXVal}%` : undefined,
+                          transition: isBlockResizing ? 'none' : undefined,
+                        }}
                         className={`group relative rounded-2xl border ${
                           block.isHidden
                             ? 'border-amber-500/60 bg-amber-950/20 border-dashed opacity-65'
+                            : isBlockSelected
+                            ? 'border-indigo-400 ring-2 ring-indigo-500/90 bg-black/35 shadow-xl'
                             : 'border-white/10 hover:border-indigo-400/50 bg-black/20 hover:bg-black/30'
                         } p-4 transition-all duration-150 space-y-3`}
                       >
+                        {/* 8-Direction Resize Handles for Selected Block */}
+                        {isBlockSelected && (
+                          <>
+                            {/* 4 Edge Strips */}
+                            <div
+                              onMouseDown={(e) =>
+                                startResizingBlock(e, block, 'n', blockWidthVal, blockMinHeightVal, blockOffsetXVal)
+                              }
+                              title="Kéo cạnh trên để chỉnh chiều cao khối"
+                              className="absolute -top-1.5 left-3 right-3 h-2.5 cursor-ns-resize z-30"
+                            />
+                            <div
+                              onMouseDown={(e) =>
+                                startResizingBlock(e, block, 's', blockWidthVal, blockMinHeightVal, blockOffsetXVal)
+                              }
+                              title="Kéo cạnh dưới để chỉnh chiều cao khối"
+                              className="absolute -bottom-1.5 left-3 right-3 h-2.5 cursor-ns-resize z-30"
+                            />
+                            <div
+                              onMouseDown={(e) =>
+                                startResizingBlock(e, block, 'w', blockWidthVal, blockMinHeightVal, blockOffsetXVal)
+                              }
+                              title="Kéo cạnh trái để chỉnh chiều rộng khối"
+                              className="absolute top-3 bottom-3 -left-1.5 w-2.5 cursor-ew-resize z-30"
+                            />
+                            <div
+                              onMouseDown={(e) =>
+                                startResizingBlock(e, block, 'e', blockWidthVal, blockMinHeightVal, blockOffsetXVal)
+                              }
+                              title="Kéo cạnh phải để chỉnh chiều rộng khối"
+                              className="absolute top-3 bottom-3 -right-1.5 w-2.5 cursor-ew-resize z-30"
+                            />
+
+                            {/* 4 Corners (NW, NE, SW, SE) */}
+                            <div
+                              onMouseDown={(e) =>
+                                startResizingBlock(e, block, 'nw', blockWidthVal, blockMinHeightVal, blockOffsetXVal)
+                              }
+                              title="Kéo góc trên-trái để chỉnh kích thước khối"
+                              className="absolute -top-1.5 -left-1.5 w-3 h-3 bg-white border-2 border-indigo-600 rounded-full cursor-nwse-resize hover:scale-125 transition-transform shadow-sm z-40"
+                            />
+                            <div
+                              onMouseDown={(e) =>
+                                startResizingBlock(e, block, 'ne', blockWidthVal, blockMinHeightVal, blockOffsetXVal)
+                              }
+                              title="Kéo góc trên-phải để chỉnh kích thước khối"
+                              className="absolute -top-1.5 -right-1.5 w-3 h-3 bg-white border-2 border-indigo-600 rounded-full cursor-nesw-resize hover:scale-125 transition-transform shadow-sm z-40"
+                            />
+                            <div
+                              onMouseDown={(e) =>
+                                startResizingBlock(e, block, 'sw', blockWidthVal, blockMinHeightVal, blockOffsetXVal)
+                              }
+                              title="Kéo góc dưới-trái để chỉnh kích thước khối"
+                              className="absolute -bottom-1.5 -left-1.5 w-3 h-3 bg-white border-2 border-indigo-600 rounded-full cursor-nesw-resize hover:scale-125 transition-transform shadow-sm z-40"
+                            />
+                            <div
+                              onMouseDown={(e) =>
+                                startResizingBlock(e, block, 'se', blockWidthVal, blockMinHeightVal, blockOffsetXVal)
+                              }
+                              title="Kéo góc dưới-phải để chỉnh kích thước khối"
+                              className="absolute -bottom-1.5 -right-1.5 w-3 h-3 bg-white border-2 border-indigo-600 rounded-full cursor-nwse-resize hover:scale-125 transition-transform shadow-sm z-40"
+                            />
+
+                            {/* 4 Mid-Side Handles (N, S, W, E) */}
+                            <div
+                              onMouseDown={(e) =>
+                                startResizingBlock(e, block, 'n', blockWidthVal, blockMinHeightVal, blockOffsetXVal)
+                              }
+                              title="Kéo lên/xuống để chỉnh chiều cao khối"
+                              className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-4 h-2 bg-white border border-indigo-600 rounded-full cursor-ns-resize hover:scale-125 transition-transform shadow-sm z-40"
+                            />
+                            <div
+                              onMouseDown={(e) =>
+                                startResizingBlock(e, block, 's', blockWidthVal, blockMinHeightVal, blockOffsetXVal)
+                              }
+                              title="Kéo lên/xuống để chỉnh chiều cao khối"
+                              className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-4 h-2 bg-white border border-indigo-600 rounded-full cursor-ns-resize hover:scale-125 transition-transform shadow-sm z-40"
+                            />
+                            <div
+                              onMouseDown={(e) =>
+                                startResizingBlock(e, block, 'w', blockWidthVal, blockMinHeightVal, blockOffsetXVal)
+                              }
+                              title="Kéo trái/phải để chỉnh chiều rộng khối"
+                              className="absolute top-1/2 -translate-y-1/2 -left-1.5 w-2 h-4 bg-white border border-indigo-600 rounded-full cursor-ew-resize hover:scale-125 transition-transform shadow-sm z-40"
+                            />
+                            <div
+                              onMouseDown={(e) =>
+                                startResizingBlock(e, block, 'e', blockWidthVal, blockMinHeightVal, blockOffsetXVal)
+                              }
+                              title="Kéo trái/phải để chỉnh chiều rộng khối"
+                              className="absolute top-1/2 -translate-y-1/2 -right-1.5 w-2 h-4 bg-white border border-indigo-600 rounded-full cursor-ew-resize hover:scale-125 transition-transform shadow-sm z-40"
+                            />
+                          </>
+                        )}
                         {/* Block Action Header: Badge + Edit + Hide/Show + Move Up + Move Down + Delete */}
                         <div className="flex items-center justify-between pb-2 border-b border-white/10">
                           <div className="flex items-center gap-2">

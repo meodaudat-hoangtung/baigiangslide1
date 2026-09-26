@@ -630,7 +630,15 @@ export const FullscreenPresentationModal: React.FC<FullscreenPresentationModalPr
                     }
 
                     return (
-                    <div key={b.id || i} className="relative space-y-4 group/item">
+                    <div
+                      key={b.id || i}
+                      className="relative space-y-4 group/item"
+                      style={{
+                        width: b.blockWidthPercent ? `${b.blockWidthPercent}%` : undefined,
+                        minHeight: b.blockMinHeightPx ? `${b.blockMinHeightPx}px` : undefined,
+                        marginLeft: b.blockOffsetXPercent ? `${b.blockOffsetXPercent}%` : undefined,
+                      }}
+                    >
                       {b.isHidden && (
                         <button
                           type="button"
@@ -744,6 +752,9 @@ export const FullscreenPresentationModal: React.FC<FullscreenPresentationModalPr
                             src={b.imageUrl}
                             alt={b.imageAlt || ''}
                             className="max-h-[60vh] object-contain rounded-2xl shadow-xl border border-white/10"
+                            style={{
+                              width: b.imageWidthPercent ? `${b.imageWidthPercent}%` : undefined,
+                            }}
                           />
                           {b.imageCaption && (
                             <div className="text-sm text-white/80 italic mt-2 text-center">

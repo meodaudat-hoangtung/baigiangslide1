@@ -1089,7 +1089,19 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
             {/* PowerPoint Floating Text Boxes Overlay */}
             <SlideTextBoxOverlay
               textBoxes={slide?.textBoxes || EMPTY_TEXT_BOXES}
-              isEditable={false}
+              isEditable={!isFullscreen && !!onUpdateSlide}
+              onUpdateTextBox={(id, updates) => {
+                if (!onUpdateSlide) return;
+                const next = (slide?.textBoxes || []).map((tb) =>
+                  tb.id === id ? { ...tb, ...updates } : tb
+                );
+                onUpdateSlide({ ...slide, textBoxes: next });
+              }}
+              onDeleteTextBox={(id) => {
+                if (!onUpdateSlide) return;
+                const next = (slide?.textBoxes || []).filter((tb) => tb.id !== id);
+                onUpdateSlide({ ...slide, textBoxes: next });
+              }}
               revealedAnimStep={slideAnimStep}
               lastTriggeredStep={slideLastTriggeredStep}
             />
@@ -1679,7 +1691,23 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
                   variants={blockVariants}
                   initial="initial"
                   animate="animate"
-                  className="relative w-full group/block"
+                  className="relative group/block"
+                  style={{
+                    width: block.blockWidthPercent ? `${block.blockWidthPercent}%` : '100%',
+                    minHeight: block.blockMinHeightPx ? `${block.blockMinHeightPx}px` : undefined,
+                    marginLeft:
+                      block.blockOffsetXPercent !== undefined
+                        ? `${block.blockOffsetXPercent}%`
+                        : block.blockWidthPercent && block.blockWidthPercent < 100
+                        ? 'auto'
+                        : undefined,
+                    marginRight:
+                      block.blockOffsetXPercent === undefined &&
+                      block.blockWidthPercent &&
+                      block.blockWidthPercent < 100
+                        ? 'auto'
+                        : undefined,
+                  }}
                 >
                   {block.isHidden && (
                     <button

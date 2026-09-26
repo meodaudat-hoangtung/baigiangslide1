@@ -9,6 +9,7 @@ import {
   AlignLeft,
   AlignCenter,
   AlignRight,
+  AlignJustify,
   Palette,
   X,
   Check,
@@ -229,10 +230,12 @@ export const SlideTextBoxOverlay: React.FC<SlideTextBoxOverlayProps> = ({
 
   // Live local overrides during drag/resize for 60fps+ zero-latency movement without network/SSE jitter
   const [liveOverrides, setLiveOverrides] = useState<
-    Record<string, { x?: number; y?: number; width?: number }>
+    Record<string, { x?: number; y?: number; width?: number; height?: number }>
   >({});
   const [activeInteractionId, setActiveInteractionId] = useState<string | null>(null);
-  const liveOverridesRef = useRef<Record<string, { x?: number; y?: number; width?: number }>>({});
+  const liveOverridesRef = useRef<
+    Record<string, { x?: number; y?: number; width?: number; height?: number }>
+  >({});
 
   // Clear editingTextId if another box is selected or deselected
   useEffect(() => {
@@ -257,14 +260,77 @@ export const SlideTextBoxOverlay: React.FC<SlideTextBoxOverlayProps> = ({
     openEditOnClick: boolean;
   } | null>(null);
 
-  // Resizing state
+  // Resizing state (supports all 8 directions: n, s, e, w, ne, nw, se, sw)
+  type ResizeDirection = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
   const resizingBoxRef = useRef<{
     id: string;
+    direction: ResizeDirection;
     startX: number;
+    startY: number;
+    initialX: number;
+    initialY: number;
     initialWidth: number;
+    initialHeight: number;
     containerWidth: number;
+    containerHeight: number;
+    affectsVertical: boolean;
     hasMoved: boolean;
   } | null>(null);
+
+  // Helper to start resizing a text box in any of the 8 directions
+  const startResizingBox = (
+    e: React.MouseEvent,
+    box: SlideTextBox,
+    direction: ResizeDirection,
+    currentX: number,
+    currentY: number,
+    currentWidth?: number,
+    currentHeight?: number
+  ) => {
+    if (!isEditable || e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const overlayEl = overlayRef.current;
+    if (!overlayEl) return;
+    const rect = overlayEl.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+
+    const boxEl = overlayEl.querySelector(`[data-textbox-id="${box.id}"]`) as HTMLElement | null;
+    const boxRect = boxEl ? boxEl.getBoundingClientRect() : null;
+
+    const measuredWidth =
+      currentWidth !== undefined
+        ? currentWidth
+        : boxRect
+        ? (boxRect.width / rect.width) * 100
+        : 35;
+    const measuredHeight =
+      currentHeight !== undefined
+        ? currentHeight
+        : boxRect
+        ? (boxRect.height / rect.height) * 100
+        : 14;
+
+    if (onSelectBoxRef.current && selectedBoxId !== box.id) {
+      onSelectBoxRef.current(box.id);
+    }
+
+    setActiveInteractionId(box.id);
+    resizingBoxRef.current = {
+      id: box.id,
+      direction,
+      startX: e.clientX,
+      startY: e.clientY,
+      initialX: currentX,
+      initialY: currentY,
+      initialWidth: Math.max(8, measuredWidth),
+      initialHeight: Math.max(6, measuredHeight),
+      containerWidth: rect.width,
+      containerHeight: rect.height,
+      affectsVertical: direction.includes('n') || direction.includes('s'),
+      hasMoved: false,
+    };
+  };
 
   // Helper to start dragging a text box accurately relative to the slide overlay container
   const startDraggingBox = (
@@ -362,23 +428,56 @@ export const SlideTextBoxOverlay: React.FC<SlideTextBoxOverlayProps> = ({
         setLiveOverrides({ ...liveOverridesRef.current });
       }
 
-      // 2. Handle Resizing
+      // 2. Handle 8-Direction Resizing
       if (resizingBoxRef.current) {
         const resize = resizingBoxRef.current;
         const dxPx = e.clientX - resize.startX;
+        const dyPx = e.clientY - resize.startY;
         resize.hasMoved = true;
 
         const rect = overlayRef.current?.getBoundingClientRect();
         const cWidth = rect && rect.width > 0 ? rect.width : resize.containerWidth;
+        const cHeight = rect && rect.height > 0 ? rect.height : resize.containerHeight;
 
-        const deltaWidthPercent = (dxPx / cWidth) * 100;
-        const newWidth = Math.max(12, Math.min(96, resize.initialWidth + deltaWidthPercent));
-        const roundedWidth = Math.round(newWidth * 10) / 10;
+        const dxPercent = (dxPx / cWidth) * 100;
+        const dyPercent = (dyPx / cHeight) * 100;
 
-        const nextOverride = {
+        let nextX = resize.initialX;
+        let nextY = resize.initialY;
+        let nextWidth = resize.initialWidth;
+        let nextHeight = resize.initialHeight;
+
+        // East (right edge)
+        if (resize.direction.includes('e')) {
+          nextWidth = Math.max(8, Math.min(100 - resize.initialX, resize.initialWidth + dxPercent));
+        }
+        // West (left edge)
+        if (resize.direction.includes('w')) {
+          const rightEdge = resize.initialX + resize.initialWidth;
+          nextX = Math.max(0, Math.min(rightEdge - 8, resize.initialX + dxPercent));
+          nextWidth = rightEdge - nextX;
+        }
+        // South (bottom edge)
+        if (resize.direction.includes('s')) {
+          nextHeight = Math.max(6, Math.min(100 - resize.initialY, resize.initialHeight + dyPercent));
+        }
+        // North (top edge)
+        if (resize.direction.includes('n')) {
+          const bottomEdge = resize.initialY + resize.initialHeight;
+          nextY = Math.max(0, Math.min(bottomEdge - 6, resize.initialY + dyPercent));
+          nextHeight = bottomEdge - nextY;
+        }
+
+        const nextOverride: { x?: number; y?: number; width?: number; height?: number } = {
           ...liveOverridesRef.current[resize.id],
-          width: roundedWidth,
+          x: Math.round(nextX * 100) / 100,
+          y: Math.round(nextY * 100) / 100,
+          width: Math.round(nextWidth * 100) / 100,
         };
+        if (resize.affectsVertical) {
+          nextOverride.height = Math.round(nextHeight * 100) / 100;
+        }
+
         liveOverridesRef.current = {
           ...liveOverridesRef.current,
           [resize.id]: nextOverride,
@@ -428,7 +527,10 @@ export const SlideTextBoxOverlay: React.FC<SlideTextBoxOverlayProps> = ({
           if (target) {
             onUpdateTextBoxRef.current({
               ...target,
+              x: override.x !== undefined ? override.x : target.x,
+              y: override.y !== undefined ? override.y : target.y,
               width: override.width !== undefined ? override.width : target.width,
+              height: override.height !== undefined ? override.height : target.height,
             });
           }
         }
@@ -477,6 +579,46 @@ export const SlideTextBoxOverlay: React.FC<SlideTextBoxOverlayProps> = ({
         e.preventDefault();
         e.stopPropagation();
 
+        // Alt + Arrow (or Ctrl + Shift + Arrow): Resize width / height along directions
+        if (e.altKey || ((e.ctrlKey || e.metaKey) && e.shiftKey)) {
+          const resizeStep = e.shiftKey && e.altKey ? 0.4 : 1.5;
+          const overlayEl = overlayRef.current;
+          const rect = overlayEl?.getBoundingClientRect();
+          const boxEl = overlayEl?.querySelector(
+            `[data-textbox-id="${targetBox.id}"]`
+          ) as HTMLElement | null;
+          const boxRect = boxEl?.getBoundingClientRect();
+
+          const curWidth =
+            targetBox.width !== undefined
+              ? targetBox.width
+              : rect && boxRect && rect.width > 0
+              ? (boxRect.width / rect.width) * 100
+              : 35;
+          const curHeight =
+            targetBox.height !== undefined
+              ? targetBox.height
+              : rect && boxRect && rect.height > 0
+              ? (boxRect.height / rect.height) * 100
+              : 14;
+
+          let nextW = curWidth;
+          let nextH = targetBox.height;
+
+          if (e.key === 'ArrowRight') nextW = Math.min(98, curWidth + resizeStep);
+          if (e.key === 'ArrowLeft') nextW = Math.max(8, curWidth - resizeStep);
+          if (e.key === 'ArrowDown') nextH = Math.min(96, curHeight + resizeStep);
+          if (e.key === 'ArrowUp') nextH = Math.max(6, curHeight - resizeStep);
+
+          onUpdateTextBoxRef.current({
+            ...targetBox,
+            width: Math.round(nextW * 100) / 100,
+            ...(nextH !== undefined ? { height: Math.round(nextH * 100) / 100 } : {}),
+          });
+          return;
+        }
+
+        // Normal Arrow keys: Move position (x, y)
         // Step size: Shift = 0.2% (micro adjustment), Ctrl/Meta = 2.5% (fast), Normal = 0.8%
         const step = e.shiftKey ? 0.2 : e.ctrlKey || e.metaKey ? 2.5 : 0.8;
         const curX = targetBox.x !== undefined ? targetBox.x : 20;
@@ -529,7 +671,9 @@ export const SlideTextBoxOverlay: React.FC<SlideTextBoxOverlayProps> = ({
         const posX = boxOverride?.x !== undefined ? boxOverride.x : box.x !== undefined ? box.x : 20;
         const posY = boxOverride?.y !== undefined ? boxOverride.y : box.y !== undefined ? box.y : 30;
         const widthVal = boxOverride?.width !== undefined ? boxOverride.width : box.width;
+        const heightVal = boxOverride?.height !== undefined ? boxOverride.height : box.height;
         const width = widthVal !== undefined ? `${widthVal}%` : 'auto';
+        const height = heightVal !== undefined ? `${heightVal}%` : 'auto';
         const fontSize = box.fontSize || 24;
         const color = box.color || '#ffffff';
         const bg = box.backgroundColor || 'transparent';
@@ -665,12 +809,14 @@ export const SlideTextBoxOverlay: React.FC<SlideTextBoxOverlayProps> = ({
                 left: `${posX}%`,
                 top: `${posY}%`,
                 width: width,
-                minWidth: '140px',
+                height: height,
+                minWidth: '80px',
+                minHeight: '36px',
                 backgroundColor: bg,
                 border: borderWidth > 0 ? `${borderWidth}px solid ${borderColor}` : undefined,
                 color: color,
                 textAlign: textAlign,
-                willChange: isInteracting ? 'left, top, width' : undefined,
+                willChange: isInteracting ? 'left, top, width, height' : undefined,
                 transition: isInteracting ? 'none' : undefined,
                 '--tb-duration': `${animDuration}s`,
                 '--tb-delay': `${animDelay}s`,
@@ -833,26 +979,57 @@ export const SlideTextBoxOverlay: React.FC<SlideTextBoxOverlayProps> = ({
                   <Italic className="w-3.5 h-3.5" />
                 </button>
 
-                {/* Alignment */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    const nextAlign: Record<'left' | 'center' | 'right', 'left' | 'center' | 'right'> = {
-                      left: 'center',
-                      center: 'right',
-                      right: 'left',
-                    };
-                    if (onUpdateTextBox) {
-                      onUpdateTextBox({ ...box, textAlign: nextAlign[textAlign] });
-                    }
-                  }}
-                  title={`Căn lề: ${textAlign}`}
-                  className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800"
-                >
-                  {textAlign === 'left' && <AlignLeft className="w-3.5 h-3.5" />}
-                  {textAlign === 'center' && <AlignCenter className="w-3.5 h-3.5" />}
-                  {textAlign === 'right' && <AlignRight className="w-3.5 h-3.5" />}
-                </button>
+                {/* Alignment: Left, Center, Right, Justify */}
+                <div className="flex items-center gap-0.5 bg-slate-950/70 p-0.5 rounded-lg border border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => onUpdateTextBox && onUpdateTextBox({ ...box, textAlign: 'left' })}
+                    title="Căn lề trái (Align Left)"
+                    className={`p-1 rounded transition-colors cursor-pointer ${
+                      textAlign === 'left'
+                        ? 'bg-indigo-600 text-white shadow-2xs'
+                        : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                    }`}
+                  >
+                    <AlignLeft className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onUpdateTextBox && onUpdateTextBox({ ...box, textAlign: 'center' })}
+                    title="Căn giữa (Align Center)"
+                    className={`p-1 rounded transition-colors cursor-pointer ${
+                      textAlign === 'center'
+                        ? 'bg-indigo-600 text-white shadow-2xs'
+                        : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                    }`}
+                  >
+                    <AlignCenter className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onUpdateTextBox && onUpdateTextBox({ ...box, textAlign: 'right' })}
+                    title="Căn lề phải (Align Right)"
+                    className={`p-1 rounded transition-colors cursor-pointer ${
+                      textAlign === 'right'
+                        ? 'bg-indigo-600 text-white shadow-2xs'
+                        : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                    }`}
+                  >
+                    <AlignRight className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onUpdateTextBox && onUpdateTextBox({ ...box, textAlign: 'justify' })}
+                    title="Căn đều hai bên (Justify)"
+                    className={`p-1 rounded transition-colors cursor-pointer ${
+                      textAlign === 'justify'
+                        ? 'bg-indigo-600 text-white shadow-2xs'
+                        : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                    }`}
+                  >
+                    <AlignJustify className="w-3.5 h-3.5" />
+                  </button>
+                </div>
 
                 <div className="w-px h-4 bg-slate-700" />
 
@@ -1211,7 +1388,7 @@ export const SlideTextBoxOverlay: React.FC<SlideTextBoxOverlayProps> = ({
             )}
 
             {/* TEXT BOX CONTENT AREA */}
-            <div className="p-2 relative min-h-[36px]">
+            <div className="p-2 relative min-h-[36px] h-full flex flex-col justify-center">
               {isEditing ? (
                 <div className="space-y-2 bg-slate-950/95 p-2.5 rounded-xl border border-indigo-500/60 shadow-2xl backdrop-blur-md">
                   {/* Textarea input */}
@@ -1233,6 +1410,7 @@ export const SlideTextBoxOverlay: React.FC<SlideTextBoxOverlayProps> = ({
                     className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white outline-none resize-y leading-relaxed font-sans shadow-inner focus:border-indigo-400 min-h-[50px] text-xs sm:text-sm"
                     style={{
                       color: color,
+                      textAlign: textAlign,
                     }}
                   />
 
@@ -1255,7 +1433,7 @@ export const SlideTextBoxOverlay: React.FC<SlideTextBoxOverlayProps> = ({
               ) : (
                 /* RENDERED SLIDE DISPLAY */
                 <div
-                  className={`leading-relaxed min-h-[32px] p-1.5 transition-colors rounded ${
+                  className={`leading-relaxed min-h-[32px] h-full p-1.5 transition-colors rounded flex flex-col justify-center overflow-hidden ${
                     isEditable
                       ? isInteracting
                         ? 'cursor-grabbing'
@@ -1265,7 +1443,7 @@ export const SlideTextBoxOverlay: React.FC<SlideTextBoxOverlayProps> = ({
                   title={
                     isEditable
                       ? isSelected
-                        ? 'Giữ chuột kéo để di chuyển, dùng phím mũi tên ↑↓←→ để căn chỉnh, hoặc nhấp vào đây để sửa chữ'
+                        ? 'Kéo thân hộp để di chuyển | Kéo 8 điểm neo quanh viền (hoặc Alt + Phím mũi tên) để chỉnh kích thước tùy ý'
                         : 'Nhấp để chọn hoặc giữ chuột kéo để di chuyển vị trí Text Box'
                       : undefined
                   }
@@ -1278,7 +1456,11 @@ export const SlideTextBoxOverlay: React.FC<SlideTextBoxOverlayProps> = ({
                   }}
                 >
                   {box.text && box.text.trim().length > 0 ? (
-                    <MathView content={box.text} text={box.text} />
+                    <MathView
+                      content={box.text}
+                      text={box.text}
+                      className={textAlign === 'justify' ? 'text-justify w-full' : 'w-full'}
+                    />
                   ) : (
                     <span className="opacity-60 italic text-amber-200/90 text-sm block">
                       Nhấp vào đây để nhập văn bản hoặc công thức toán...
@@ -1287,28 +1469,91 @@ export const SlideTextBoxOverlay: React.FC<SlideTextBoxOverlayProps> = ({
                 </div>
               )}
 
-              {/* Resize Handle (Bottom-Right corner) */}
-              {isSelected && isEditable && (
-                <div
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    const overlayEl = overlayRef.current;
-                    if (!overlayEl) return;
-                    const rect = overlayEl.getBoundingClientRect();
-                    if (rect.width <= 0) return;
-                    setActiveInteractionId(box.id);
-                    resizingBoxRef.current = {
-                      id: box.id,
-                      startX: e.clientX,
-                      initialWidth: widthVal !== undefined ? widthVal : 35,
-                      containerWidth: rect.width,
-                      hasMoved: false,
-                    };
-                  }}
-                  title="Kéo để chỉnh chiều rộng Text Box"
-                  className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-indigo-500 border border-white rounded-xs cursor-ew-resize hover:scale-125 transition-transform z-30"
-                />
+              {/* 8-DIRECTION POWERPOINT RESIZE HANDLES & EDGE STRIPS */}
+              {isSelected && isEditable && !isEditing && (
+                <>
+                  {/* 4 Invisible Edge Resize Strips (kéo trực tiếp trên 4 cạnh viền) */}
+                  <div
+                    onMouseDown={(e) => startResizingBox(e, box, 'n', posX, posY, widthVal, heightVal)}
+                    onDoubleClick={(e) => {
+                      e.stopPropagation();
+                      if (onUpdateTextBox) onUpdateTextBox({ ...box, height: undefined });
+                    }}
+                    title="Kéo cạnh trên để chỉnh chiều cao (Nhấp đúp để tự khớp chữ)"
+                    className="absolute -top-1.5 left-2 right-2 h-2.5 cursor-ns-resize z-30"
+                  />
+                  <div
+                    onMouseDown={(e) => startResizingBox(e, box, 's', posX, posY, widthVal, heightVal)}
+                    onDoubleClick={(e) => {
+                      e.stopPropagation();
+                      if (onUpdateTextBox) onUpdateTextBox({ ...box, height: undefined });
+                    }}
+                    title="Kéo cạnh dưới để chỉnh chiều cao (Nhấp đúp để tự khớp chữ)"
+                    className="absolute -bottom-1.5 left-2 right-2 h-2.5 cursor-ns-resize z-30"
+                  />
+                  <div
+                    onMouseDown={(e) => startResizingBox(e, box, 'w', posX, posY, widthVal, heightVal)}
+                    title="Kéo cạnh trái để chỉnh chiều rộng"
+                    className="absolute top-2 bottom-2 -left-1.5 w-2.5 cursor-ew-resize z-30"
+                  />
+                  <div
+                    onMouseDown={(e) => startResizingBox(e, box, 'e', posX, posY, widthVal, heightVal)}
+                    title="Kéo cạnh phải để chỉnh chiều rộng"
+                    className="absolute top-2 bottom-2 -right-1.5 w-2.5 cursor-ew-resize z-30"
+                  />
+
+                  {/* 4 Corner Handles (NW, NE, SW, SE) */}
+                  <div
+                    onMouseDown={(e) => startResizingBox(e, box, 'nw', posX, posY, widthVal, heightVal)}
+                    title="Kéo góc trên-trái để chỉnh kích thước 2 chiều"
+                    className="absolute -top-1.5 -left-1.5 w-3 h-3 bg-white border-2 border-indigo-600 rounded-full cursor-nwse-resize hover:scale-125 transition-transform shadow-sm z-40"
+                  />
+                  <div
+                    onMouseDown={(e) => startResizingBox(e, box, 'ne', posX, posY, widthVal, heightVal)}
+                    title="Kéo góc trên-phải để chỉnh kích thước 2 chiều"
+                    className="absolute -top-1.5 -right-1.5 w-3 h-3 bg-white border-2 border-indigo-600 rounded-full cursor-nesw-resize hover:scale-125 transition-transform shadow-sm z-40"
+                  />
+                  <div
+                    onMouseDown={(e) => startResizingBox(e, box, 'sw', posX, posY, widthVal, heightVal)}
+                    title="Kéo góc dưới-trái để chỉnh kích thước 2 chiều"
+                    className="absolute -bottom-1.5 -left-1.5 w-3 h-3 bg-white border-2 border-indigo-600 rounded-full cursor-nesw-resize hover:scale-125 transition-transform shadow-sm z-40"
+                  />
+                  <div
+                    onMouseDown={(e) => startResizingBox(e, box, 'se', posX, posY, widthVal, heightVal)}
+                    title="Kéo góc dưới-phải để chỉnh kích thước 2 chiều"
+                    className="absolute -bottom-1.5 -right-1.5 w-3 h-3 bg-white border-2 border-indigo-600 rounded-full cursor-nwse-resize hover:scale-125 transition-transform shadow-sm z-40"
+                  />
+
+                  {/* 4 Mid-Side Handles (N, S, W, E) */}
+                  <div
+                    onMouseDown={(e) => startResizingBox(e, box, 'n', posX, posY, widthVal, heightVal)}
+                    onDoubleClick={(e) => {
+                      e.stopPropagation();
+                      if (onUpdateTextBox) onUpdateTextBox({ ...box, height: undefined });
+                    }}
+                    title="Kéo lên/xuống để chỉnh chiều cao"
+                    className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-4 h-2 bg-white border border-indigo-600 rounded-full cursor-ns-resize hover:scale-125 transition-transform shadow-sm z-40"
+                  />
+                  <div
+                    onMouseDown={(e) => startResizingBox(e, box, 's', posX, posY, widthVal, heightVal)}
+                    onDoubleClick={(e) => {
+                      e.stopPropagation();
+                      if (onUpdateTextBox) onUpdateTextBox({ ...box, height: undefined });
+                    }}
+                    title="Kéo lên/xuống để chỉnh chiều cao"
+                    className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-4 h-2 bg-white border border-indigo-600 rounded-full cursor-ns-resize hover:scale-125 transition-transform shadow-sm z-40"
+                  />
+                  <div
+                    onMouseDown={(e) => startResizingBox(e, box, 'w', posX, posY, widthVal, heightVal)}
+                    title="Kéo trái/phải để chỉnh chiều rộng"
+                    className="absolute top-1/2 -translate-y-1/2 -left-1.5 w-2 h-4 bg-white border border-indigo-600 rounded-full cursor-ew-resize hover:scale-125 transition-transform shadow-sm z-40"
+                  />
+                  <div
+                    onMouseDown={(e) => startResizingBox(e, box, 'e', posX, posY, widthVal, heightVal)}
+                    title="Kéo trái/phải để chỉnh chiều rộng"
+                    className="absolute top-1/2 -translate-y-1/2 -right-1.5 w-2 h-4 bg-white border border-indigo-600 rounded-full cursor-ew-resize hover:scale-125 transition-transform shadow-sm z-40"
+                  />
+                </>
               )}
             </div>
           </div>

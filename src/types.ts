@@ -202,6 +202,10 @@ export interface SlideContentBlock {
   animationDelay?: number; // Độ trễ xuất hiện (giây), vd: 0, 0.2, 0.4, 0.8...
   animationDuration?: number; // Thời lượng hiệu ứng (giây), vd: 0.35, 0.5, 0.8
   isHidden?: boolean; // Ẩn / hiện đối tượng khối trên trang chiếu
+  // Custom free-form block dimensions (drag-to-resize on slide canvas):
+  blockWidthPercent?: number; // 20 - 100 (%)
+  blockMinHeightPx?: number; // custom height in px
+  blockOffsetXPercent?: number; // horizontal offset (0 - 80%)
 }
 
 export interface SlideSection {
@@ -249,7 +253,8 @@ export interface SlideTextBox {
   text: string;
   x?: number; // percentage from left (0 - 100)
   y?: number; // percentage from top (0 - 100)
-  width?: number; // percentage width (e.g. 35) or px
+  width?: number; // percentage width (e.g. 35)
+  height?: number; // percentage height (e.g. 20), undefined = auto fit content
   fontSize?: number; // font size in pt, e.g. 20, 24, 28, 32, 36
   color?: string; // text color e.g. '#ffffff', '#fbbf24', '#38bdf8'
   backgroundColor?: string; // background fill e.g. 'transparent', '#0f172a', '#ffffff'
@@ -257,7 +262,7 @@ export interface SlideTextBox {
   borderWidth?: number; // border width e.g. 0, 1, 2
   fontWeight?: 'normal' | 'bold';
   fontStyle?: 'normal' | 'italic';
-  textAlign?: 'left' | 'center' | 'right';
+  textAlign?: 'left' | 'center' | 'right' | 'justify';
   isLocked?: boolean;
   // Animation settings (5 hiệu ứng cơ bản):
   animation?: TextBoxAnimationEffect;
