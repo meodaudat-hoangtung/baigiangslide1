@@ -92,11 +92,17 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
   // General feedback message
   const [feedbackMsg, setFeedbackMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
-  // Fetch Admin password on mount
+  // Fetch & subscribe to Admin password in real time
   useEffect(() => {
     FirestoreService.getAdminPassword().then((pw) => {
       setCurrentAdminPw(pw);
     });
+    const unsubscribePw = FirestoreService.subscribeAdminPassword((pw) => {
+      setCurrentAdminPw(pw);
+    });
+    return () => {
+      unsubscribePw();
+    };
   }, []);
 
   // Subscribe to members list in realtime from Firestore

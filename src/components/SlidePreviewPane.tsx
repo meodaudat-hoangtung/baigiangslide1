@@ -428,9 +428,9 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
   // Canvas resize logic with pixel-perfect synchronization
   const syncCanvasSize = useCallback(() => {
     const canvas = canvasRef.current;
-    if (!canvas || !canvas.parentElement) return;
+    if (!canvas) return;
 
-    const rect = canvas.parentElement.getBoundingClientRect();
+    const rect = canvas.getBoundingClientRect();
     const newWidth = Math.round(rect.width);
     const newHeight = Math.round(rect.height);
 
@@ -454,18 +454,21 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
       }
     }
 
-    canvasRectRef.current = canvas.getBoundingClientRect();
+    canvasRectRef.current = rect;
   }, []);
 
   useEffect(() => {
     syncCanvasSize();
     const canvas = canvasRef.current;
-    if (!canvas || !canvas.parentElement) return;
+    if (!canvas) return;
 
     const observer = new ResizeObserver(() => {
       syncCanvasSize();
     });
-    observer.observe(canvas.parentElement);
+    observer.observe(canvas);
+    if (canvas.parentElement) {
+      observer.observe(canvas.parentElement);
+    }
     window.addEventListener('resize', syncCanvasSize);
 
     return () => {
@@ -487,7 +490,7 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
   const getCanvasCoords = (clientX: number, clientY: number) => {
     const canvas = canvasRef.current;
     if (!canvas) return { x: 0, y: 0 };
-    const rect = canvasRectRef.current || canvas.getBoundingClientRect();
+    const rect = canvas.getBoundingClientRect();
     const scaleX = rect.width > 0 ? canvas.width / rect.width : 1;
     const scaleY = rect.height > 0 ? canvas.height / rect.height : 1;
     return {
@@ -498,6 +501,7 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
 
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (!isDrawingMode) return;
+    syncCanvasSize();
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -612,7 +616,7 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
     <div
       ref={containerRef}
       onMouseMove={() => {
-        if (isFullscreen) resetControlsHideTimer();
+        if (isFullscreen && !isDrawing.current) resetControlsHideTimer();
       }}
       onTouchStart={() => {
         if (isFullscreen) resetControlsHideTimer();
@@ -1045,7 +1049,9 @@ export const SlidePreviewPane: React.FC<SlidePreviewPaneProps> = ({
           onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerUp}
           onPointerLeave={handlePointerUp}
-          className={`absolute inset-0 z-20 pointer-events-${isDrawingMode ? 'auto' : 'none'}`}
+          className={`absolute inset-0 w-full h-full z-20 ${
+            isDrawingMode ? 'pointer-events-auto cursor-crosshair' : 'pointer-events-none'
+          }`}
           style={{ width: '100%', height: '100%', touchAction: 'none' }}
         />
 

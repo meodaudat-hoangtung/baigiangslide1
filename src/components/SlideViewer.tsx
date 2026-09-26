@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   ChevronLeft,
   ChevronRight,
@@ -89,6 +89,7 @@ export const SlideViewer: React.FC<SlideViewerProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const isDrawing = useRef(false);
+  const lastPointRef = useRef<{ x: number; y: number } | null>(null);
 
   // Safety check if slide index is within range
   const safeIndex = Math.min(Math.max(0, currentSlideIndex), Math.max(0, lesson.slides.length - 1));
@@ -128,19 +129,48 @@ export const SlideViewer: React.FC<SlideViewerProps> = ({
   }, [currentSlideIndex, lesson.slides.length, isEditModalOpen, isDeleteModalOpen, isImageModalOpen, showSlideListModal, showPrintView, zoomedImage]);
 
   // Handle Canvas Resize & Drawing
-  useEffect(() => {
+  const syncCanvasSize = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const updateCanvasSize = () => {
-      if (canvas.parentElement) {
-        canvas.width = canvas.parentElement.clientWidth;
-        canvas.height = canvas.parentElement.clientHeight;
+    const rect = canvas.getBoundingClientRect();
+    const newWidth = Math.round(rect.width);
+    const newHeight = Math.round(rect.height);
+    if (newWidth <= 0 || newHeight <= 0) return;
+
+    if (canvas.width !== newWidth || canvas.height !== newHeight) {
+      const prevCanvas = document.createElement('canvas');
+      prevCanvas.width = canvas.width;
+      prevCanvas.height = canvas.height;
+      const prevCtx = prevCanvas.getContext('2d');
+      if (prevCtx && canvas.width > 0 && canvas.height > 0) {
+        prevCtx.drawImage(canvas, 0, 0);
       }
+      canvas.width = newWidth;
+      canvas.height = newHeight;
+      const ctx = canvas.getContext('2d');
+      if (ctx && prevCanvas.width > 0 && prevCanvas.height > 0) {
+        ctx.drawImage(prevCanvas, 0, 0, newWidth, newHeight);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    syncCanvasSize();
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const observer = new ResizeObserver(() => {
+      syncCanvasSize();
+    });
+    observer.observe(canvas);
+    if (canvas.parentElement) {
+      observer.observe(canvas.parentElement);
+    }
+    window.addEventListener('resize', syncCanvasSize);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', syncCanvasSize);
     };
-    updateCanvasSize();
-    window.addEventListener('resize', updateCanvasSize);
-    return () => window.removeEventListener('resize', updateCanvasSize);
-  }, [isFullscreen, currentSlideIndex]);
+  }, [isFullscreen, currentSlideIndex, syncCanvasSize]);
 
   const clearCanvas = () => {
     const canvas = canvasRef.current;
@@ -148,36 +178,73 @@ export const SlideViewer: React.FC<SlideViewerProps> = ({
       const ctx = canvas.getContext('2d');
       ctx?.clearRect(0, 0, canvas.width, canvas.height);
     }
+    lastPointRef.current = null;
+    isDrawing.current = false;
   };
 
-  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  const getCanvasCoords = (clientX: number, clientY: number) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return { x: 0, y: 0 };
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = rect.width > 0 ? canvas.width / rect.width : 1;
+    const scaleY = rect.height > 0 ? canvas.height / rect.height : 1;
+    return {
+      x: (clientX - rect.left) * scaleX,
+      y: (clientY - rect.top) * scaleY,
+    };
+  };
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (!isDrawingMode) return;
+    syncCanvasSize();
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
+    try {
+      canvas.setPointerCapture(e.pointerId);
+    } catch (_) {}
     isDrawing.current = true;
-    const rect = canvas.getBoundingClientRect();
+    const { x, y } = getCanvasCoords(e.clientX, e.clientY);
+    lastPointRef.current = { x, y };
+    ctx.fillStyle = activeColor;
     ctx.beginPath();
-    ctx.moveTo(e.clientX - rect.left, e.clientY - rect.top);
+    ctx.arc(x, y, 1.75, 0, Math.PI * 2);
+    ctx.fill();
   };
 
-  const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (!isDrawingMode || !isDrawing.current) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    const rect = canvas.getBoundingClientRect();
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 3.5;
     ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
     ctx.strokeStyle = activeColor;
-    ctx.lineTo(e.clientX - rect.left, e.clientY - rect.top);
-    ctx.stroke();
+
+    const rawEvents = (e.nativeEvent && (e.nativeEvent as any).getCoalescedEvents?.()) || [e];
+    for (const ev of rawEvents) {
+      const { x, y } = getCanvasCoords(ev.clientX, ev.clientY);
+      const last = lastPointRef.current || { x, y };
+      ctx.beginPath();
+      ctx.moveTo(last.x, last.y);
+      ctx.lineTo(x, y);
+      ctx.stroke();
+      lastPointRef.current = { x, y };
+    }
   };
 
-  const stopDrawing = () => {
+  const handlePointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
     isDrawing.current = false;
+    lastPointRef.current = null;
+    const canvas = canvasRef.current;
+    if (canvas) {
+      try {
+        canvas.releasePointerCapture(e.pointerId);
+      } catch (_) {}
+    }
   };
 
   const goToNextSlide = () => {
@@ -693,11 +760,13 @@ export const SlideViewer: React.FC<SlideViewerProps> = ({
         {/* Canvas for Live Drawing */}
         <canvas
           ref={canvasRef}
-          onMouseDown={startDrawing}
-          onMouseMove={draw}
-          onMouseUp={stopDrawing}
-          onMouseLeave={stopDrawing}
-          className={`absolute inset-0 z-20 ${isDrawingMode ? 'cursor-crosshair' : 'pointer-events-none'}`}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerUp}
+          onPointerLeave={handlePointerUp}
+          style={{ touchAction: 'none' }}
+          className={`absolute inset-0 w-full h-full z-20 ${isDrawingMode ? 'pointer-events-auto cursor-crosshair' : 'pointer-events-none'}`}
         />
 
         {/* Slide Content */}

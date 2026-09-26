@@ -61,6 +61,12 @@ export const LessonLibrary: React.FC<LessonLibraryProps> = ({
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [deletingLesson, setDeletingLesson] = useState<MathLesson | null>(null);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [importNotice, setImportNotice] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+
+  const showNotice = (text: string, type: 'success' | 'error' = 'success') => {
+    setImportNotice({ text, type });
+    setTimeout(() => setImportNotice(null), 4000);
+  };
 
   const handleExportLesson = (lesson: MathLesson) => {
     const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(lesson, null, 2));
@@ -89,16 +95,16 @@ export const LessonLibrary: React.FC<LessonLibraryProps> = ({
           // Bulk import
           await StorageService.importBackup(text);
           onRefreshCloudSync();
-          alert(`Đã khôi phục thành công ${parsed.length} bài giảng vào hệ thống!`);
+          showNotice(`Đã khôi phục thành công ${parsed.length} bài giảng vào hệ thống!`, 'success');
         } else if (parsed.slides && parsed.questions) {
           // Single lesson import
           onImportLesson(parsed);
-          alert(`Đã nhập bài giảng "${parsed.title}" thành công!`);
+          showNotice(`Đã nhập bài giảng "${parsed.title}" thành công!`, 'success');
         } else {
-          alert('File JSON không đúng định dạng bài giảng MathSlide.');
+          showNotice('File JSON không đúng định dạng bài giảng MathSlide.', 'error');
         }
       } catch {
-        alert('Không thể đọc file JSON.');
+        showNotice('Không thể đọc file JSON.', 'error');
       }
     };
     reader.readAsText(file);
@@ -118,6 +124,18 @@ export const LessonLibrary: React.FC<LessonLibraryProps> = ({
   return (
     <div className="max-w-6xl mx-auto px-4 py-6 space-y-6">
       {/* Storage Security Notification Banner */}
+      {importNotice && (
+        <div
+          className={`p-3.5 rounded-2xl border text-xs font-bold flex items-center gap-2 shadow-lg animate-in fade-in ${
+            importNotice.type === 'success'
+              ? 'bg-emerald-950/90 border-emerald-500/50 text-emerald-300'
+              : 'bg-rose-950/90 border-rose-500/50 text-rose-300'
+          }`}
+        >
+          <CheckCircle2 className="w-4 h-4 shrink-0" />
+          <span>{importNotice.text}</span>
+        </div>
+      )}
       <div className="bg-gradient-to-r from-emerald-950/40 via-slate-900 to-indigo-950/40 border border-emerald-500/30 rounded-2xl p-4 flex items-center justify-between gap-4 text-xs">
         <div className="flex items-center gap-3">
           <div className="p-2 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex-shrink-0">

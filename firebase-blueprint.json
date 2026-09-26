@@ -1,0 +1,87 @@
+{
+  "entities": {
+    "MathLesson": {
+      "title": "MathLesson",
+      "description": "High school math lesson containing slides and quiz questions",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique lesson identifier" },
+        "title": { "type": "string", "description": "Lesson title" },
+        "grade": { "type": "string", "description": "Grade level (10, 11, 12)" },
+        "chapter": { "type": "string", "description": "Chapter name" },
+        "createdAt": { "type": "number", "description": "Creation timestamp" },
+        "updatedAt": { "type": "number", "description": "Last update timestamp" }
+      },
+      "required": ["id", "title", "grade", "chapter"]
+    },
+    "DeletedLesson": {
+      "title": "DeletedLesson",
+      "description": "Permanent tombstone for deleted lesson",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Deleted lesson ID" },
+        "deletedAt": { "type": "number", "description": "Deletion timestamp" }
+      },
+      "required": ["id", "deletedAt"]
+    },
+    "AppUser": {
+      "title": "AppUser",
+      "description": "Teacher or administrator account",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "User ID" },
+        "email": { "type": "string", "description": "User email" },
+        "displayName": { "type": "string", "description": "Display name" },
+        "role": { "type": "string", "enum": ["admin", "member"] },
+        "status": { "type": "string", "enum": ["active", "blocked"] }
+      },
+      "required": ["uid", "email", "displayName", "role", "status"]
+    },
+    "AppConfig": {
+      "title": "AppConfig",
+      "description": "System and workspace synchronization state",
+      "type": "object",
+      "properties": {
+        "activeLessonId": { "type": "string", "description": "Currently selected lesson ID" },
+        "activeTab": { "type": "string", "description": "Currently active workspace tab" },
+        "activeSlideIndex": { "type": "number", "description": "Currently active slide index" },
+        "zoomLevel": { "type": "number", "description": "Current slide canvas zoom percentage" },
+        "updatedAt": { "type": "number", "description": "Last update timestamp" }
+      }
+    },
+    "LessonChunk": {
+      "title": "LessonChunk",
+      "description": "Chunked payload segment for large lessons exceeding 650KB",
+      "type": "object",
+      "properties": {
+        "lessonId": { "type": "string", "description": "Parent lesson ID" },
+        "index": { "type": "number", "description": "Chunk index" },
+        "data": { "type": "string", "description": "Serialized JSON slice" },
+        "updatedAt": { "type": "number", "description": "Timestamp" }
+      },
+      "required": ["lessonId", "index", "data"]
+    }
+  },
+  "firestore": {
+    "/lessons/{lessonId}": {
+      "schema": "MathLesson",
+      "description": "Global real-time lessons collection"
+    },
+    "/lesson_chunks/{chunkId}": {
+      "schema": "LessonChunk",
+      "description": "Large lesson chunks collection"
+    },
+    "/deleted_lessons/{lessonId}": {
+      "schema": "DeletedLesson",
+      "description": "Permanent tombstones for deleted lessons"
+    },
+    "/users/{userId}": {
+      "schema": "AppUser",
+      "description": "Users and members directory"
+    },
+    "/app_config/{configId}": {
+      "schema": "AppConfig",
+      "description": "Global system configuration and workspace state"
+    }
+  }
+}

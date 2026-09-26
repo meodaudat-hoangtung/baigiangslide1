@@ -293,9 +293,14 @@ export const FullscreenPresentationModal: React.FC<FullscreenPresentationModalPr
 
   // Auto-hide controls when idle (unless pinned, collapsed, or drawer active)
   const handleMouseMove = (e: React.MouseEvent) => {
-    setMousePos({ x: e.clientX, y: e.clientY });
+    if (isLaserMode) {
+      setMousePos({ x: e.clientX, y: e.clientY });
+    }
+    if (isDrawingRef.current) return;
     if (!isToolbarCollapsed) {
-      setShowControls(true);
+      if (!showControls) {
+        setShowControls(true);
+      }
       if (controlsTimeoutRef.current) {
         clearTimeout(controlsTimeoutRef.current);
       }
@@ -403,10 +408,9 @@ export const FullscreenPresentationModal: React.FC<FullscreenPresentationModalPr
   // Adjust canvas size & sync coordinates with pixel-perfect precision
   const syncCanvasSize = useCallback(() => {
     const canvas = canvasRef.current;
-    if (!canvas || !canvas.parentElement) return;
+    if (!canvas) return;
 
-    const parent = canvas.parentElement;
-    const rect = parent.getBoundingClientRect();
+    const rect = canvas.getBoundingClientRect();
     const newWidth = Math.round(rect.width);
     const newHeight = Math.round(rect.height);
 
@@ -430,18 +434,21 @@ export const FullscreenPresentationModal: React.FC<FullscreenPresentationModalPr
       }
     }
 
-    canvasRectRef.current = canvas.getBoundingClientRect();
+    canvasRectRef.current = rect;
   }, []);
 
   useEffect(() => {
     syncCanvasSize();
     const canvas = canvasRef.current;
-    if (!canvas || !canvas.parentElement) return;
+    if (!canvas) return;
 
     const observer = new ResizeObserver(() => {
       syncCanvasSize();
     });
-    observer.observe(canvas.parentElement);
+    observer.observe(canvas);
+    if (canvas.parentElement) {
+      observer.observe(canvas.parentElement);
+    }
     window.addEventListener('resize', syncCanvasSize);
 
     return () => {
@@ -454,7 +461,7 @@ export const FullscreenPresentationModal: React.FC<FullscreenPresentationModalPr
   const getCanvasCoords = (clientX: number, clientY: number) => {
     const canvas = canvasRef.current;
     if (!canvas) return { x: 0, y: 0 };
-    const rect = canvasRectRef.current || canvas.getBoundingClientRect();
+    const rect = canvas.getBoundingClientRect();
     const scaleX = rect.width > 0 ? canvas.width / rect.width : 1;
     const scaleY = rect.height > 0 ? canvas.height / rect.height : 1;
     return {
@@ -466,6 +473,7 @@ export const FullscreenPresentationModal: React.FC<FullscreenPresentationModalPr
   // Drawing canvas logic - Zero-lag, instant pointer response
   const handleCanvasPointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (!isPenMode) return;
+    syncCanvasSize();
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');

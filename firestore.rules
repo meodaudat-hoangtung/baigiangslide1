@@ -16,6 +16,11 @@ service cloud.firestore {
     match /lessons/{lessonId} {
       allow read, write: if true;
     }
+
+    // Large Lesson Chunks Collection
+    match /lesson_chunks/{chunkId} {
+      allow read, write: if true;
+    }
     
     // Deleted lesson tombstones
     match /deleted_lessons/{lessonId} {

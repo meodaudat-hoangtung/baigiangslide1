@@ -20,6 +20,7 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 const DATA_DIR = path.join(process.cwd(), 'persisted_data');
 const LESSONS_FILE = path.join(DATA_DIR, 'lessons.json');
 const DELETED_IDS_FILE = path.join(DATA_DIR, 'deleted_ids.json');
+const WORKSPACE_STATE_FILE = path.join(DATA_DIR, 'workspace_state.json');
 
 // Ensure data directory exists
 if (!fs.existsSync(DATA_DIR)) {
@@ -33,13 +34,37 @@ if (!fs.existsSync(DATA_DIR)) {
 // In-memory / server-persisted cloud storage for teacher lessons
 const serverLessonDatabase: Map<string, MathLesson> = new Map();
 const deletedIdsSet: Set<string> = new Set();
+let serverWorkspaceState: {
+  activeLessonId?: string;
+  activeTab?: 'slides' | 'questions' | 'library';
+  activeSlideIndex?: number;
+  zoomLevel?: number;
+  updatedAt: number;
+} = {
+  updatedAt: 0,
+};
+
+// Connected SSE clients for instant real-time cross-tab/cross-device push
+const sseClients = new Set<express.Response>();
+
+function broadcastRealtimeEvent(type: string, payload: any) {
+  const data = JSON.stringify({ type, payload, timestamp: Date.now() });
+  sseClients.forEach((client) => {
+    try {
+      client.write(`data: ${data}\n\n`);
+    } catch {
+      sseClients.delete(client);
+    }
+  });
+}
 
 // Helper to save server database to disk
 function saveDatabaseToDisk() {
   try {
-    const list = Array.from(serverLessonDatabase.values());
+    const list = Array.from(serverLessonDatabase.values()).filter((l) => !deletedIdsSet.has(l.id));
     fs.writeFileSync(LESSONS_FILE, JSON.stringify(list, null, 2), 'utf-8');
     fs.writeFileSync(DELETED_IDS_FILE, JSON.stringify(Array.from(deletedIdsSet), null, 2), 'utf-8');
+    fs.writeFileSync(WORKSPACE_STATE_FILE, JSON.stringify(serverWorkspaceState, null, 2), 'utf-8');
   } catch (err) {
     console.error('Failed to write database to disk:', err);
   }
@@ -47,6 +72,16 @@ function saveDatabaseToDisk() {
 
 // Helper to load server database from disk on boot
 function loadDatabaseFromDisk() {
+  try {
+    if (fs.existsSync(WORKSPACE_STATE_FILE)) {
+      const wsRaw = fs.readFileSync(WORKSPACE_STATE_FILE, 'utf-8');
+      const parsedWs = JSON.parse(wsRaw);
+      if (parsedWs && typeof parsedWs === 'object') {
+        serverWorkspaceState = parsedWs;
+      }
+    }
+  } catch {}
+
   try {
     // 1. Load deleted IDs list first
     if (fs.existsSync(DELETED_IDS_FILE)) {
@@ -64,12 +99,6 @@ function loadDatabaseFromDisk() {
       if (Array.isArray(list)) {
         list.forEach((l) => {
           if (!deletedIdsSet.has(l.id)) {
-            // If this is an unmodified default sample lesson, reset timestamp to fixed historical baseline
-            const sampleMatch = SAMPLE_LESSONS.find((s) => s.id === l.id);
-            if (sampleMatch && l.slides.length === sampleMatch.slides.length && (!l.questions || l.questions.length === sampleMatch.questions.length)) {
-              l.updatedAt = 1700000000000;
-              l.createdAt = 1700000000000;
-            }
             serverLessonDatabase.set(l.id, l);
           }
         });
@@ -78,17 +107,8 @@ function loadDatabaseFromDisk() {
       }
     }
   } catch (err) {
-    console.warn('[Storage] Error loading from disk, seeding defaults:', err);
+    console.warn('[Storage] Error loading from disk:', err);
   }
-
-  // Seed with sample lessons ONLY if no lessons.json file ever existed
-  SAMPLE_LESSONS.forEach((l) => {
-    if (!deletedIdsSet.has(l.id)) {
-      serverLessonDatabase.set(l.id, { ...l, createdAt: 1700000000000, updatedAt: 1700000000000 });
-    }
-  });
-  saveDatabaseToDisk();
-  console.log(`[Storage] Initialized database with ${serverLessonDatabase.size} lessons.`);
 }
 
 loadDatabaseFromDisk();
@@ -102,11 +122,36 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// Real-Time Server-Sent Events (SSE) stream
+app.get('/api/events', (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders?.();
+
+  sseClients.add(res);
+  res.write(`data: ${JSON.stringify({ type: 'connected', timestamp: Date.now() })}\n\n`);
+
+  const keepAlive = setInterval(() => {
+    try {
+      res.write(`: ping\n\n`);
+    } catch {
+      clearInterval(keepAlive);
+      sseClients.delete(res);
+    }
+  }, 25000);
+
+  req.on('close', () => {
+    clearInterval(keepAlive);
+    sseClients.delete(res);
+  });
+});
+
 app.get('/api/sample-lessons', (req, res) => {
   res.json(SAMPLE_LESSONS);
 });
 
-// Load all synced lessons
+// Load all synced lessons & workspace state
 app.get('/api/sync-load-lessons', (req, res) => {
   const lessons = Array.from(serverLessonDatabase.values())
     .filter((l) => !deletedIdsSet.has(l.id))
@@ -114,7 +159,59 @@ app.get('/api/sync-load-lessons', (req, res) => {
   res.json({
     lessons,
     deletedIds: Array.from(deletedIdsSet),
+    workspaceState: serverWorkspaceState,
   });
+});
+
+// Workspace state endpoints
+app.get('/api/workspace-state', (req, res) => {
+  res.json(serverWorkspaceState);
+});
+
+app.post('/api/workspace-state', (req, res) => {
+  try {
+    const incoming = req.body;
+    if (incoming && typeof incoming === 'object') {
+      serverWorkspaceState = {
+        ...serverWorkspaceState,
+        ...incoming,
+        updatedAt: incoming.updatedAt || Date.now(),
+      };
+      saveDatabaseToDisk();
+      broadcastRealtimeEvent('workspace:updated', serverWorkspaceState);
+    }
+    res.json({ success: true, workspaceState: serverWorkspaceState });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Lỗi cập nhật trạng thái' });
+  }
+});
+
+// Sync deleted IDs from Firestore to Server
+app.post('/api/sync-deleted-ids', (req, res) => {
+  try {
+    const { deletedIds } = req.body;
+    let changed = false;
+    const newlyDeleted: string[] = [];
+    if (Array.isArray(deletedIds)) {
+      deletedIds.forEach((id: string) => {
+        if (id && (!deletedIdsSet.has(id) || serverLessonDatabase.has(id))) {
+          deletedIdsSet.add(id);
+          serverLessonDatabase.delete(id);
+          newlyDeleted.push(id);
+          changed = true;
+        }
+      });
+    }
+    if (changed) {
+      saveDatabaseToDisk();
+      newlyDeleted.forEach((id) => {
+        broadcastRealtimeEvent('lesson:deleted', { id });
+      });
+    }
+    res.json({ success: true, deletedIds: Array.from(deletedIdsSet) });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Save or sync a lesson
@@ -124,18 +221,29 @@ app.post('/api/sync-save-lesson', (req, res) => {
     if (!lesson || !lesson.id) {
       return res.status(400).json({ error: 'Dữ liệu bài giảng không hợp lệ' });
     }
-    // If the user explicitly saved/created this lesson, un-delete it if was previously marked deleted
-    deletedIdsSet.delete(lesson.id);
+    const isReconcileOnly = req.query.reconcile === 'true';
+    // If reconcile mode and this lesson was already deleted, reject resurrection!
+    if (isReconcileOnly && deletedIdsSet.has(lesson.id)) {
+      return res.json({ success: false, ignored: true, reason: 'deleted' });
+    }
+    // If explicitly saved/created by user, un-delete it if it was previously marked deleted
+    if (!isReconcileOnly) {
+      deletedIdsSet.delete(lesson.id);
+    }
     lesson.updatedAt = lesson.updatedAt || Date.now();
-    serverLessonDatabase.set(lesson.id, lesson);
-    saveDatabaseToDisk();
+    const existing = serverLessonDatabase.get(lesson.id);
+    if (!existing || (lesson.updatedAt || 0) >= (existing.updatedAt || 0)) {
+      serverLessonDatabase.set(lesson.id, lesson);
+      saveDatabaseToDisk();
+      broadcastRealtimeEvent('lesson:saved', lesson);
+    }
     res.json({ success: true, lesson, syncedAt: lesson.updatedAt });
   } catch (err: any) {
     res.status(500).json({ error: err.message || 'Không thể lưu bài giảng' });
   }
 });
 
-// Delete a synced lesson
+// Delete a synced lesson permanently
 app.delete('/api/sync-delete-lesson/:id', (req, res) => {
   try {
     const id = req.params.id;
@@ -145,6 +253,7 @@ app.delete('/api/sync-delete-lesson/:id', (req, res) => {
     serverLessonDatabase.delete(id);
     deletedIdsSet.add(id);
     saveDatabaseToDisk();
+    broadcastRealtimeEvent('lesson:deleted', { id });
     console.log(`[Storage] Permanently deleted lesson ${id} from server & recorded tombstone.`);
     res.json({ success: true, deletedId: id });
   } catch (err: any) {

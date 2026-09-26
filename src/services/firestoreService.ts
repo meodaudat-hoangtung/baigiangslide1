@@ -28,10 +28,90 @@ export const DEFAULT_ADMIN_PASSWORD = 'Admin@123456';
 
 const USERS_COLLECTION = 'users';
 const LESSONS_COLLECTION = 'lessons';
+const LESSON_CHUNKS_COLLECTION = 'lesson_chunks';
 const DELETED_LESSONS_COLLECTION = 'deleted_lessons';
 const CONFIG_COLLECTION = 'app_config';
 const ADMIN_CONFIG_DOC = 'admin_auth';
+const WORKSPACE_STATE_DOC = 'workspace_state';
 const SESSION_KEY = 'toan_active_user_session';
+
+export enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+export interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+    emailVerified?: boolean | null;
+    isAnonymous?: boolean | null;
+    tenantId?: string | null;
+    providerInfo?: {
+      providerId?: string | null;
+      email?: string | null;
+    }[];
+  };
+}
+
+export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+      tenantId: auth.currentUser?.tenantId,
+      providerInfo:
+        auth.currentUser?.providerData?.map((provider) => ({
+          providerId: provider.providerId,
+          email: provider.email,
+        })) || [],
+    },
+    operationType,
+    path,
+  };
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
+
+// Deep strip undefined fields so Firestore never rejects an object
+function cleanFirestoreData<T>(obj: T): T {
+  return JSON.parse(JSON.stringify(obj));
+}
+
+const MAX_DOC_CHARS = 650000; // Safe margin below Firestore 1MB limit
+
+async function resolveChunkedLesson(rawData: any): Promise<MathLesson | null> {
+  if (!rawData || !rawData.id) return null;
+  if (!rawData.isChunked || !rawData.chunkCount) {
+    return rawData as MathLesson;
+  }
+  try {
+    const chunkPromises: Promise<any>[] = [];
+    for (let i = 0; i < rawData.chunkCount; i++) {
+      chunkPromises.push(getDoc(doc(db, LESSON_CHUNKS_COLLECTION, `${rawData.id}_part_${i}`)));
+    }
+    const chunkSnaps = await Promise.all(chunkPromises);
+    let fullJson = '';
+    for (const snap of chunkSnaps) {
+      if (!snap.exists()) return null;
+      fullJson += snap.data()?.data || '';
+    }
+    return JSON.parse(fullJson) as MathLesson;
+  } catch (err) {
+    console.warn('Error reassembling chunked lesson:', err);
+    return null;
+  }
+}
 
 export const FirestoreService = {
   // -------------------------------------------------------------
@@ -70,6 +150,25 @@ export const FirestoreService = {
       updatedBy: 'admin'
     }, { merge: true });
     localStorage.setItem('cached_admin_password', cleanPw);
+  },
+
+  subscribeAdminPassword(onUpdate: (password: string) => void) {
+    const configRef = doc(db, CONFIG_COLLECTION, ADMIN_CONFIG_DOC);
+    return onSnapshot(
+      configRef,
+      (snap) => {
+        if (snap.exists() && snap.data()?.password) {
+          const pw = snap.data().password as string;
+          try {
+            localStorage.setItem('cached_admin_password', pw);
+          } catch {}
+          onUpdate(pw);
+        }
+      },
+      (err) => {
+        console.warn('subscribeAdminPassword error:', err);
+      }
+    );
   },
 
   async verifyAdminLogin(passwordInput: string): Promise<AppUser> {
@@ -354,6 +453,28 @@ export const FirestoreService = {
     });
   },
 
+  // Realtime subscription for a specific logged-in user document
+  subscribeUserDoc(uid: string, onUpdate: (user: AppUser | null, isDeleted: boolean) => void) {
+    if (!uid || uid === 'admin_master_root') {
+      return () => {};
+    }
+    const userRef = doc(db, USERS_COLLECTION, uid);
+    return onSnapshot(
+      userRef,
+      (snap) => {
+        if (!snap.exists()) {
+          onUpdate(null, true);
+          return;
+        }
+        const data = snap.data() as AppUser;
+        onUpdate({ ...data, uid: snap.id }, false);
+      },
+      (err) => {
+        console.warn('subscribeUserDoc error:', err);
+      }
+    );
+  },
+
   // Add new member manually by email (pre-approved)
   async addManualMember(email: string, displayName: string, role: UserRole = 'member'): Promise<void> {
     const tempUid = 'pre_' + Math.random().toString(36).substring(2, 10);
@@ -373,51 +494,209 @@ export const FirestoreService = {
 
 
   // -------------------------------------------------------------
-  // Lesson synchronization with Firestore
+  // Lesson & Global Workspace Real-Time Synchronization
   // -------------------------------------------------------------
 
-  // Listen to lessons live from Firestore
-  subscribeLessons(onUpdate: (lessons: MathLesson[]) => void) {
+  // Listen to lessons live from Firestore (across all tabs, incognito, devices & locations)
+  subscribeLessons(onUpdate: (lessons: MathLesson[], removedIds: string[]) => void) {
     const q = query(collection(db, LESSONS_COLLECTION), orderBy('updatedAt', 'desc'));
-    return onSnapshot(q, (snapshot) => {
-      const list: MathLesson[] = [];
-      snapshot.forEach((d) => {
-        list.push(d.data() as MathLesson);
-      });
-      onUpdate(list);
-    }, (err) => {
-      console.warn('subscribeLessons error:', err);
-    });
+    return onSnapshot(
+      q,
+      async (snapshot) => {
+        const removedIds: string[] = [];
+        snapshot.docChanges().forEach((change) => {
+          if (change.type === 'removed' && change.doc.id) {
+            removedIds.push(change.doc.id);
+          }
+        });
+        const rawDocs: any[] = [];
+        snapshot.forEach((d) => {
+          rawDocs.push(d.data());
+        });
+        const resolved = await Promise.all(rawDocs.map((r) => resolveChunkedLesson(r)));
+        const validList = resolved.filter((l): l is MathLesson => l !== null && !!l.id);
+        onUpdate(validList, removedIds);
+      },
+      (err) => {
+        console.warn('subscribeLessons error:', err);
+      }
+    );
   },
 
-  // Save lesson to Firestore
-  async saveLessonToFirestore(lesson: MathLesson): Promise<void> {
-    const lessonRef = doc(db, LESSONS_COLLECTION, lesson.id);
-    await setDoc(lessonRef, lesson, { merge: true });
-    // Remove tombstone if exists
+  // Listen to deleted lesson tombstones in real time
+  subscribeDeletedLessons(onUpdate: (deletedIds: string[]) => void) {
+    return onSnapshot(
+      collection(db, DELETED_LESSONS_COLLECTION),
+      (snapshot) => {
+        const ids: string[] = [];
+        snapshot.forEach((d) => {
+          if (d.id) ids.push(d.id);
+        });
+        onUpdate(ids);
+      },
+      (err) => {
+        console.warn('subscribeDeletedLessons error:', err);
+      }
+    );
+  },
+
+  // Fetch all deleted lesson IDs from Firestore
+  async fetchDeletedLessonsFromFirestore(): Promise<string[]> {
     try {
-      const tombstoneRef = doc(db, DELETED_LESSONS_COLLECTION, lesson.id);
+      const snap = await getDocs(collection(db, DELETED_LESSONS_COLLECTION));
+      const ids: string[] = [];
+      snap.forEach((d) => {
+        if (d.id) ids.push(d.id);
+      });
+      return ids;
+    } catch (err) {
+      console.warn('fetchDeletedLessonsFromFirestore error:', err);
+      return [];
+    }
+  },
+
+  // Save lesson to Firestore (with automatic chunking if > 650KB)
+  async saveLessonToFirestore(lesson: MathLesson): Promise<void> {
+    const cleanLesson = cleanFirestoreData(lesson);
+    const serialized = JSON.stringify(cleanLesson);
+    const lessonRef = doc(db, LESSONS_COLLECTION, cleanLesson.id);
+
+    if (serialized.length <= MAX_DOC_CHARS) {
+      await setDoc(lessonRef, { ...cleanLesson, isChunked: false, chunkCount: 0 });
+    } else {
+      const chunks: string[] = [];
+      for (let i = 0; i < serialized.length; i += MAX_DOC_CHARS) {
+        chunks.push(serialized.slice(i, i + MAX_DOC_CHARS));
+      }
+      const batch = writeBatch(db);
+      chunks.forEach((chunkStr, idx) => {
+        const chunkRef = doc(db, LESSON_CHUNKS_COLLECTION, `${cleanLesson.id}_part_${idx}`);
+        batch.set(chunkRef, {
+          lessonId: cleanLesson.id,
+          index: idx,
+          data: chunkStr,
+          updatedAt: cleanLesson.updatedAt || Date.now(),
+        });
+      });
+      batch.set(lessonRef, {
+        id: cleanLesson.id,
+        title: cleanLesson.title,
+        grade: cleanLesson.grade,
+        chapter: cleanLesson.chapter,
+        createdAt: cleanLesson.createdAt || Date.now(),
+        updatedAt: cleanLesson.updatedAt || Date.now(),
+        slides: [],
+        questions: [],
+        isChunked: true,
+        chunkCount: chunks.length,
+      });
+      await batch.commit();
+    }
+
+    // Remove tombstone if exists (only when explicitly created/saved)
+    try {
+      const tombstoneRef = doc(db, DELETED_LESSONS_COLLECTION, cleanLesson.id);
       await deleteDoc(tombstoneRef);
     } catch {}
   },
 
-  // Delete lesson from Firestore
+  // Delete lesson permanently from Firestore & record permanent tombstone
   async deleteLessonFromFirestore(lessonId: string): Promise<void> {
-    const lessonRef = doc(db, LESSONS_COLLECTION, lessonId);
-    await deleteDoc(lessonRef);
-    // Mark tombstone in Firestore
+    // 1. Record permanent tombstone FIRST so all listeners immediately know it's deleted
     const tombstoneRef = doc(db, DELETED_LESSONS_COLLECTION, lessonId);
     await setDoc(tombstoneRef, { deletedAt: Date.now(), id: lessonId });
+
+    // 2. Delete main lesson document
+    const lessonRef = doc(db, LESSONS_COLLECTION, lessonId);
+    try {
+      const snap = await getDoc(lessonRef);
+      if (snap.exists() && snap.data()?.chunkCount) {
+        const count = snap.data().chunkCount as number;
+        for (let i = 0; i < count; i++) {
+          await deleteDoc(doc(db, LESSON_CHUNKS_COLLECTION, `${lessonId}_part_${i}`)).catch(() => {});
+        }
+      }
+    } catch {}
+    await deleteDoc(lessonRef);
   },
 
   // Fetch all lessons from Firestore
   async fetchLessonsFromFirestore(): Promise<MathLesson[]> {
     const q = query(collection(db, LESSONS_COLLECTION), orderBy('updatedAt', 'desc'));
     const snap = await getDocs(q);
-    const list: MathLesson[] = [];
+    const rawDocs: any[] = [];
     snap.forEach((d) => {
-      list.push(d.data() as MathLesson);
+      rawDocs.push(d.data());
     });
-    return list;
-  }
+    const resolved = await Promise.all(rawDocs.map((r) => resolveChunkedLesson(r)));
+    return resolved.filter((l): l is MathLesson => l !== null && !!l.id);
+  },
+
+  // Save global workspace state (active lesson, active tab, slide index, zoom, seed status)
+  async saveWorkspaceState(state: {
+    activeLessonId?: string;
+    activeTab?: 'slides' | 'questions' | 'library';
+    activeSlideIndex?: number;
+    zoomLevel?: number;
+    isSeeded?: boolean;
+    updatedAt?: number;
+  }): Promise<void> {
+    try {
+      const ref = doc(db, CONFIG_COLLECTION, WORKSPACE_STATE_DOC);
+      await setDoc(
+        ref,
+        cleanFirestoreData({
+          ...state,
+          updatedAt: state.updatedAt || Date.now(),
+        }),
+        { merge: true }
+      );
+    } catch (err) {
+      console.warn('saveWorkspaceState error:', err);
+    }
+  },
+
+  async getWorkspaceState(): Promise<{
+    activeLessonId?: string;
+    activeTab?: 'slides' | 'questions' | 'library';
+    activeSlideIndex?: number;
+    zoomLevel?: number;
+    isSeeded?: boolean;
+    updatedAt?: number;
+  } | null> {
+    try {
+      const ref = doc(db, CONFIG_COLLECTION, WORKSPACE_STATE_DOC);
+      const snap = await getDoc(ref);
+      if (snap.exists()) {
+        return snap.data() as any;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  },
+
+  subscribeWorkspaceState(
+    onUpdate: (state: {
+      activeLessonId?: string;
+      activeTab?: 'slides' | 'questions' | 'library';
+      activeSlideIndex?: number;
+      zoomLevel?: number;
+      isSeeded?: boolean;
+      updatedAt?: number;
+    }) => void
+  ) {
+    const ref = doc(db, CONFIG_COLLECTION, WORKSPACE_STATE_DOC);
+    return onSnapshot(
+      ref,
+      (snap) => {
+        if (snap.exists()) {
+          onUpdate(snap.data() as any);
+        }
+      },
+      (err) => {
+        console.warn('subscribeWorkspaceState error:', err);
+      }
+    );
+  },
 };

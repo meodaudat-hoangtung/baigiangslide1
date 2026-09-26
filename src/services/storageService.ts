@@ -6,21 +6,53 @@ const DB_NAME = 'bai_giang_toan_db';
 const DB_VERSION = 1;
 const STORE_NAME = 'lessons_store';
 const LOCAL_STORAGE_KEY = 'mathslide_lessons_v2';
+const LEGACY_LOCAL_STORAGE_KEY = 'mathslide_lessons_v1';
 const INITIALIZED_KEY = 'mathslide_initialized_v2';
 const DELETED_IDS_KEY = 'mathslide_deleted_lesson_ids_v2';
+const LEGACY_DELETED_IDS_KEY = 'mathslide_deleted_lesson_ids_v1';
+const WORKSPACE_STATE_KEY = 'mathslide_workspace_state_v2';
 
-// Helper to get deleted lesson IDs
-export function getDeletedLessonIds(): Set<string> {
+// Cross-tab instant broadcast channel
+const syncChannel: BroadcastChannel | null =
+  typeof window !== 'undefined' && 'BroadcastChannel' in window
+    ? new BroadcastChannel('mathslide_realtime_sync_v3')
+    : null;
+
+export function subscribeLocalBroadcast(
+  onEvent: (event: { type: string; payload: any; timestamp: number }) => void
+): () => void {
+  if (!syncChannel) return () => {};
+  const handler = (e: MessageEvent) => {
+    if (e.data && e.data.type) {
+      onEvent(e.data);
+    }
+  };
+  syncChannel.addEventListener('message', handler);
+  return () => syncChannel.removeEventListener('message', handler);
+}
+
+export function emitLocalBroadcast(type: string, payload: any) {
   try {
-    const raw = localStorage.getItem(DELETED_IDS_KEY);
-    if (raw) {
-      const arr = JSON.parse(raw);
-      if (Array.isArray(arr)) {
-        return new Set(arr);
-      }
+    syncChannel?.postMessage({ type, payload, timestamp: Date.now() });
+  } catch {}
+}
+
+// Helper to get deleted lesson IDs (unifies v2 and legacy v1 tombstones)
+export function getDeletedLessonIds(): Set<string> {
+  const result = new Set<string>();
+  try {
+    const rawV2 = localStorage.getItem(DELETED_IDS_KEY);
+    if (rawV2) {
+      const arr = JSON.parse(rawV2);
+      if (Array.isArray(arr)) arr.forEach((id) => id && result.add(id));
+    }
+    const rawV1 = localStorage.getItem(LEGACY_DELETED_IDS_KEY);
+    if (rawV1) {
+      const arr1 = JSON.parse(rawV1);
+      if (Array.isArray(arr1)) arr1.forEach((id) => id && result.add(id));
     }
   } catch {}
-  return new Set();
+  return result;
 }
 
 // Helper to record a deleted lesson ID
@@ -32,7 +64,7 @@ export function recordDeletedLessonId(id: string) {
   } catch {}
 }
 
-// Helper to un-record a deleted lesson ID when recreated
+// Helper to un-record a deleted lesson ID when explicitly recreated
 export function unrecordDeletedLessonId(id: string) {
   const set = getDeletedLessonIds();
   if (set.has(id)) {
@@ -131,18 +163,218 @@ export async function saveAllLessonsToIndexedDB(lessons: MathLesson[]): Promise<
   }
 }
 
-// Master Storage Service
+// Master Storage Service - Cloud Authoritative (Firestore + Express Server)
 export const StorageService = {
-  // Load initial lessons with multi-tier fallback: Server -> IndexedDB -> localStorage -> Samples
-  async loadAllLessons(): Promise<{ lessons: MathLesson[]; source: 'server' | 'indexedDB' | 'localStorage' | 'default' }> {
-    const deletedIds = getDeletedLessonIds();
+  // Load initial lessons & global workspace state from authoritative Cloud (Firestore + Server)
+  async loadAllLessons(): Promise<{
+    lessons: MathLesson[];
+    activeLessonId?: string;
+    activeTab?: 'slides' | 'questions' | 'library';
+    activeSlideIndex?: number;
+    zoomLevel?: number;
+    source: 'cloud' | 'indexedDB' | 'localStorage' | 'default';
+  }> {
+    const globalDeletedIds = getDeletedLessonIds();
 
-    // 1. Check if user already has local IndexedDB or LocalStorage
+    // 1. Query Firestore, Express Server, and Local IndexedDB in parallel for 100% cross-device, cross-tab consistency
+    const [
+      serverResult,
+      firestoreLessonsResult,
+      firestoreDeletedResult,
+      firestoreWorkspaceResult,
+      idbLessonsResult,
+    ] = await Promise.allSettled([
+      fetch('/api/sync-load-lessons').then(async (r) => (r.ok ? r.json() : null)),
+      FirestoreService.fetchLessonsFromFirestore(),
+      FirestoreService.fetchDeletedLessonsFromFirestore(),
+      FirestoreService.getWorkspaceState(),
+      getLessonsFromIndexedDB(),
+    ]);
+
+    let cloudReached = false;
+    let serverLessons: MathLesson[] = [];
+    let serverDeletedIds: string[] = [];
+    let serverWorkspaceState: {
+      activeLessonId?: string;
+      activeTab?: 'slides' | 'questions' | 'library';
+      activeSlideIndex?: number;
+      zoomLevel?: number;
+      updatedAt?: number;
+    } | null = null;
+
+    if (serverResult.status === 'fulfilled' && serverResult.value) {
+      cloudReached = true;
+      const data = serverResult.value;
+      serverLessons = Array.isArray(data) ? data : data.lessons || [];
+      serverDeletedIds = Array.isArray(data.deletedIds) ? data.deletedIds : [];
+      if (data.workspaceState) {
+        serverWorkspaceState = data.workspaceState;
+      }
+    }
+
+    let firestoreLessons: MathLesson[] = [];
+    if (firestoreLessonsResult.status === 'fulfilled') {
+      cloudReached = true;
+      firestoreLessons = firestoreLessonsResult.value || [];
+    }
+
+    let firestoreDeletedIds: string[] = [];
+    if (firestoreDeletedResult.status === 'fulfilled') {
+      firestoreDeletedIds = firestoreDeletedResult.value || [];
+    }
+
+    let firestoreWorkspaceState: {
+      activeLessonId?: string;
+      activeTab?: 'slides' | 'questions' | 'library';
+      activeSlideIndex?: number;
+      zoomLevel?: number;
+      isSeeded?: boolean;
+      updatedAt?: number;
+    } | null = null;
+    if (firestoreWorkspaceResult.status === 'fulfilled' && firestoreWorkspaceResult.value) {
+      firestoreWorkspaceState = firestoreWorkspaceResult.value;
+    }
+
+    // 2. Unify all deleted lesson tombstones across Server, Firestore, and Local
+    serverDeletedIds.forEach((id) => {
+      globalDeletedIds.add(id);
+      recordDeletedLessonId(id);
+    });
+    firestoreDeletedIds.forEach((id) => {
+      globalDeletedIds.add(id);
+      recordDeletedLessonId(id);
+    });
+
+    // Ensure Server, Firestore, and Local IndexedDB have identical tombstone sets
+    if (globalDeletedIds.size > 0) {
+      const allDeletedArray = Array.from(globalDeletedIds);
+      fetch('/api/sync-deleted-ids', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deletedIds: allDeletedArray }),
+      }).catch(() => {});
+
+      const fsDeletedSet = new Set(firestoreDeletedIds);
+      allDeletedArray.forEach((delId) => {
+        if (!fsDeletedSet.has(delId)) {
+          FirestoreService.deleteLessonFromFirestore(delId).catch(() => {});
+        }
+        deleteLessonFromIndexedDB(delId).catch(() => {});
+      });
+    }
+
+    // 3. If Cloud (Firestore or Server) was reached, merge authoritatively by newest updatedAt
+    if (cloudReached) {
+      const mergedMap = new Map<string, MathLesson>();
+      const fsMap = new Map<string, MathLesson>();
+      const srvMap = new Map<string, MathLesson>();
+
+      firestoreLessons.forEach((l) => {
+        if (l && l.id && !globalDeletedIds.has(l.id)) {
+          fsMap.set(l.id, l);
+          mergedMap.set(l.id, l);
+        } else if (l && l.id && globalDeletedIds.has(l.id)) {
+          // Purge any lingering deleted doc in Firestore
+          FirestoreService.deleteLessonFromFirestore(l.id).catch(() => {});
+        }
+      });
+
+      serverLessons.forEach((sVal) => {
+        if (sVal && sVal.id && !globalDeletedIds.has(sVal.id)) {
+          srvMap.set(sVal.id, sVal);
+          const existingFs = mergedMap.get(sVal.id);
+          if (!existingFs || (sVal.updatedAt || 0) > (existingFs.updatedAt || 0)) {
+            mergedMap.set(sVal.id, sVal);
+          }
+        }
+      });
+
+      // Also inspect local IndexedDB / localStorage for any user-created/edited lessons (> 1700000000000) not yet pushed to Cloud
+      const localCandidates: MathLesson[] = [];
+      if (idbLessonsResult.status === 'fulfilled' && Array.isArray(idbLessonsResult.value)) {
+        localCandidates.push(...idbLessonsResult.value);
+      }
+      try {
+        const lsV2 = localStorage.getItem(LOCAL_STORAGE_KEY);
+        if (lsV2) {
+          const parsedV2 = JSON.parse(lsV2);
+          if (Array.isArray(parsedV2)) localCandidates.push(...parsedV2);
+        }
+        const lsV1 = localStorage.getItem(LEGACY_LOCAL_STORAGE_KEY);
+        if (lsV1) {
+          const parsedV1 = JSON.parse(lsV1);
+          if (Array.isArray(parsedV1)) localCandidates.push(...parsedV1);
+        }
+      } catch {}
+
+      localCandidates.forEach((locVal) => {
+        if (
+          locVal &&
+          locVal.id &&
+          !globalDeletedIds.has(locVal.id) &&
+          (locVal.updatedAt || 0) > 1700000000000
+        ) {
+          const existing = mergedMap.get(locVal.id);
+          if (!existing || (locVal.updatedAt || 0) > (existing.updatedAt || 0)) {
+            mergedMap.set(locVal.id, locVal);
+          }
+        }
+      });
+
+      // Reconcile differences between Firestore and Express Server in background so all tiers are 100% identical
+      mergedMap.forEach((authoritativeLesson, id) => {
+        const fsLesson = fsMap.get(id);
+        const srvLesson = srvMap.get(id);
+
+        if (!fsLesson || (authoritativeLesson.updatedAt || 0) > (fsLesson.updatedAt || 0)) {
+          FirestoreService.saveLessonToFirestore(authoritativeLesson).catch(() => {});
+        }
+        if (!srvLesson || (authoritativeLesson.updatedAt || 0) > (srvLesson.updatedAt || 0)) {
+          fetch('/api/sync-save-lesson?reconcile=true', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(authoritativeLesson),
+          }).catch(() => {});
+        }
+      });
+
+      const mergedList = Array.from(mergedMap.values()).sort(
+        (a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)
+      );
+
+      // Update local caches to strictly mirror the authoritative cloud state
+      try {
+        await saveAllLessonsToIndexedDB(mergedList);
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(mergedList));
+        localStorage.setItem(INITIALIZED_KEY, 'true');
+      } catch {}
+
+      // Determine authoritative workspace state across Firestore & Server
+      const fsWsTime = firestoreWorkspaceState?.updatedAt || 0;
+      const srvWsTime = serverWorkspaceState?.updatedAt || 0;
+      const authWs = fsWsTime >= srvWsTime ? firestoreWorkspaceState : serverWorkspaceState;
+
+      let activeLessonId = authWs?.activeLessonId;
+      if (activeLessonId && globalDeletedIds.has(activeLessonId)) {
+        activeLessonId = undefined;
+      }
+
+      return {
+        lessons: mergedList,
+        activeLessonId,
+        activeTab: authWs?.activeTab,
+        activeSlideIndex: authWs?.activeSlideIndex,
+        zoomLevel: authWs?.zoomLevel,
+        source: 'cloud',
+      };
+    }
+
+    // 4. Offline Fallback ONLY when both Firestore and Server are unreachable
     let localData: MathLesson[] = [];
     try {
       const idbList = await getLessonsFromIndexedDB();
       if (Array.isArray(idbList) && idbList.length > 0) {
-        localData = idbList.filter((l) => !deletedIds.has(l.id));
+        localData = idbList.filter((l) => !globalDeletedIds.has(l.id));
       }
     } catch {}
 
@@ -152,119 +384,37 @@ export const StorageService = {
         if (localStr) {
           const parsed = JSON.parse(localStr);
           if (Array.isArray(parsed) && parsed.length > 0) {
-            localData = parsed.filter((l) => !deletedIds.has(l.id));
+            localData = parsed.filter((l) => !globalDeletedIds.has(l.id));
           }
         }
       } catch {}
     }
 
-    const isUserInitialized = localStorage.getItem(INITIALIZED_KEY) === 'true';
-
-    // 2. Try fetching from server
-    try {
-      const res = await fetch('/api/sync-load-lessons');
-      if (res.ok) {
-        const data = await res.json();
-        const serverLessonsList: MathLesson[] = Array.isArray(data) ? data : (data.lessons || []);
-        const serverDeletedIds: string[] = Array.isArray(data.deletedIds) ? data.deletedIds : [];
-        
-        // Sync server deleted ids to local deleted ids
-        serverDeletedIds.forEach((id) => {
-          deletedIds.add(id);
-          recordDeletedLessonId(id);
-        });
-
-        const activeServerLessons = serverLessonsList.filter((l) => !deletedIds.has(l.id));
-
-        // If the user has already initialized the app before, respect their deletions and local edits
-        if (isUserInitialized) {
-          const localMap = new Map(localData.map((l) => [l.id, l]));
-          const serverMap = new Map(activeServerLessons.map((l) => [l.id, l]));
-          const mergedMap = new Map<string, MathLesson>();
-          const sampleLessonIds = new Set(SAMPLE_LESSONS.map((s) => s.id));
-
-          // Add active local items (prefer local modifications unless server has a strictly newer version from another tab)
-          localMap.forEach((lVal, key) => {
-            if (!deletedIds.has(key)) {
-              const sVal = serverMap.get(key);
-              if (sVal && (sVal.updatedAt || 0) > (lVal.updatedAt || 0)) {
-                mergedMap.set(key, sVal);
-              } else {
-                mergedMap.set(key, lVal);
-                // If local has edits that the server doesn't have yet, sync to server in background
-                if (!sVal || (lVal.updatedAt || 0) > (sVal.updatedAt || 0)) {
-                  fetch('/api/sync-save-lesson', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(lVal),
-                  }).catch(() => {});
-                }
-              }
-            }
-          });
-
-          // Process items on server not present in localMap:
-          serverMap.forEach((sVal, key) => {
-            if (!localMap.has(key) && !deletedIds.has(key)) {
-              if (sampleLessonIds.has(key)) {
-                // If a default sample lesson is absent locally in an initialized app, the user DELETED it!
-                // Do NOT resurrect it! Tombstone it permanently.
-                recordDeletedLessonId(key);
-                deletedIds.add(key);
-                fetch(`/api/sync-delete-lesson/${key}`, { method: 'DELETE' }).catch(() => {});
-              } else {
-                // Genuinely new custom lesson created from another tab or device
-                mergedMap.set(key, sVal);
-              }
-            }
-          });
-
-          const mergedList = Array.from(mergedMap.values()).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-          await saveAllLessonsToIndexedDB(mergedList);
-          localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(mergedList));
-          return { lessons: mergedList, source: 'server' };
-        }
-
-        // First time initialization
-        if (activeServerLessons.length > 0) {
-          await saveAllLessonsToIndexedDB(activeServerLessons);
-          localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(activeServerLessons));
-          localStorage.setItem(INITIALIZED_KEY, 'true');
-          return { lessons: activeServerLessons, source: 'server' };
-        }
-      }
-    } catch (err) {
-      console.warn('Cannot reach cloud server (offline mode):', err);
-    }
-
-    // 3. If server was unreachable, use localData if available
     if (localData.length > 0) {
       return { lessons: localData, source: 'indexedDB' };
     }
 
-    // If already initialized and user deleted all lessons, keep it empty
+    const isUserInitialized = localStorage.getItem(INITIALIZED_KEY) === 'true';
     if (isUserInitialized) {
       return { lessons: [], source: 'indexedDB' };
     }
 
-    // 4. Default Seed on first visit
-    const initialSeed = SAMPLE_LESSONS.filter((l) => !deletedIds.has(l.id));
+    const initialSeed = SAMPLE_LESSONS.filter((l) => !globalDeletedIds.has(l.id));
     await saveAllLessonsToIndexedDB(initialSeed);
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(initialSeed));
     localStorage.setItem(INITIALIZED_KEY, 'true');
     return { lessons: initialSeed, source: 'default' };
   },
 
-  // Save single lesson to local and sync to cloud
+  // Save single lesson to local and immediately sync to all cloud & real-time channels
   async saveLesson(lesson: MathLesson, allLessons: MathLesson[]): Promise<{ isSynced: boolean }> {
     unrecordDeletedLessonId(lesson.id);
 
     const updatedLesson: MathLesson = {
       ...lesson,
-      updatedAt: lesson.updatedAt || Date.now(),
+      updatedAt: Date.now(),
     };
 
-    // Update list
     const idx = allLessons.findIndex((l) => l.id === updatedLesson.id);
     let nextLessons: MathLesson[];
     if (idx >= 0) {
@@ -274,40 +424,33 @@ export const StorageService = {
       nextLessons = [updatedLesson, ...allLessons];
     }
 
-    // 1. Immediately persist locally (IndexedDB + localStorage)
+    // 1. Immediately persist locally & broadcast to other tabs on same browser
     try {
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(nextLessons));
       localStorage.setItem(INITIALIZED_KEY, 'true');
+      emitLocalBroadcast('lesson:saved', updatedLesson);
       await saveLessonToIndexedDB(updatedLesson);
     } catch (err) {
       console.error('Local save error:', err);
     }
 
-    // 2. Sync with cloud backend (both Express server & Firestore)
+    // 2. Sync with both Express Server & Firebase Firestore in parallel
     let isSynced = false;
     try {
-      const [res] = await Promise.allSettled([
+      const [serverRes, fsRes] = await Promise.allSettled([
         fetch('/api/sync-save-lesson', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(updatedLesson),
         }),
-        FirestoreService.saveLessonToFirestore(updatedLesson).catch((e) => {
-          console.warn('Firestore direct sync failed:', e);
-        }),
+        FirestoreService.saveLessonToFirestore(updatedLesson),
       ]);
 
-      if (res.status === 'fulfilled' && res.value.ok) {
+      if (
+        (serverRes.status === 'fulfilled' && serverRes.value.ok) ||
+        fsRes.status === 'fulfilled'
+      ) {
         isSynced = true;
-        const data = await res.value.json().catch(() => null);
-        if (data && data.syncedAt) {
-          updatedLesson.updatedAt = data.syncedAt;
-          const syncedList = nextLessons.map((l) => (l.id === updatedLesson.id ? updatedLesson : l));
-          try {
-            localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(syncedList));
-            await saveLessonToIndexedDB(updatedLesson);
-          } catch {}
-        }
       }
     } catch (err) {
       console.warn('Offline: Saved locally, will sync when online', err);
@@ -317,32 +460,62 @@ export const StorageService = {
     return { isSynced };
   },
 
-  // Delete lesson permanently
+  // Delete lesson permanently & irreversibly across all storage tiers, tabs, and devices
   async deleteLesson(lessonId: string, remainingLessons: MathLesson[]): Promise<void> {
-    // 1. Mark as deleted in tombstone registry
+    // 1. Mark as permanently deleted in tombstone registry
     recordDeletedLessonId(lessonId);
+    emitLocalBroadcast('lesson:deleted', { id: lessonId });
 
     // 2. Update local state immediately
     try {
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(remainingLessons));
       localStorage.setItem(INITIALIZED_KEY, 'true');
-      await saveAllLessonsToIndexedDB(remainingLessons);
       await deleteLessonFromIndexedDB(lessonId);
+      await saveAllLessonsToIndexedDB(remainingLessons);
     } catch (err) {
       console.error('Error deleting locally:', err);
     }
 
-    // 3. Sync deletion to server & Firestore
+    // 3. Permanently delete from both Express Server & Firebase Firestore
     try {
       await Promise.allSettled([
         fetch(`/api/sync-delete-lesson/${lessonId}`, { method: 'DELETE' }),
-        FirestoreService.deleteLessonFromFirestore(lessonId).catch((e) => {
-          console.warn('Firestore delete failed:', e);
-        }),
+        FirestoreService.deleteLessonFromFirestore(lessonId),
       ]);
     } catch (err) {
       console.warn('Offline: Deleted locally, server will sync later', err);
     }
+  },
+
+  // Sync active workspace state (selected lesson, activeTab, slideIndex, zoomLevel) across all devices & tabs
+  async syncWorkspaceState(state: {
+    activeLessonId?: string;
+    activeTab?: 'slides' | 'questions' | 'library';
+    activeSlideIndex?: number;
+    zoomLevel?: number;
+  }) {
+    let existing: any = {};
+    try {
+      const raw = localStorage.getItem(WORKSPACE_STATE_KEY);
+      if (raw) existing = JSON.parse(raw) || {};
+    } catch {}
+    const payload = {
+      ...existing,
+      ...state,
+      updatedAt: Date.now(),
+    };
+    try {
+      localStorage.setItem(WORKSPACE_STATE_KEY, JSON.stringify(payload));
+    } catch {}
+    emitLocalBroadcast('workspace:updated', payload);
+    await Promise.allSettled([
+      fetch('/api/workspace-state', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }),
+      FirestoreService.saveWorkspaceState(payload),
+    ]);
   },
 
   // Export full database backup as JSON
@@ -363,29 +536,35 @@ export const StorageService = {
     if (!Array.isArray(parsed)) {
       throw new Error('Định dạng tệp sao lưu không hợp lệ (cần danh sách bài giảng JSON)');
     }
-    
-    // Clear tombstone for imported lessons
-    parsed.forEach((l: MathLesson) => {
+
+    const now = Date.now();
+    const stamped = parsed.map((l: MathLesson, idx: number) => {
       if (l && l.id) {
         unrecordDeletedLessonId(l.id);
       }
+      return {
+        ...l,
+        updatedAt: now - idx,
+      };
     });
 
-    await saveAllLessonsToIndexedDB(parsed);
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(parsed));
+    await saveAllLessonsToIndexedDB(stamped);
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(stamped));
     localStorage.setItem(INITIALIZED_KEY, 'true');
-    
-    // Sync all to server
-    for (const lesson of parsed) {
-      try {
-        await fetch('/api/sync-save-lesson', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(lesson),
-        });
-      } catch {}
-    }
 
-    return parsed;
+    await Promise.allSettled(
+      stamped.map((lesson) =>
+        Promise.allSettled([
+          fetch('/api/sync-save-lesson', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(lesson),
+          }),
+          FirestoreService.saveLessonToFirestore(lesson),
+        ])
+      )
+    );
+
+    return stamped;
   },
 };

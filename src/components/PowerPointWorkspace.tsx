@@ -112,6 +112,13 @@ export const PowerPointWorkspace: React.FC<PowerPointWorkspaceProps> = ({
   // Modals
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [slideToDelete, setSlideToDelete] = useState<Slide | null>(null);
+  const [confirmDeleteDialog, setConfirmDeleteDialog] = useState<{
+    title: string;
+    message: string;
+    itemPreview?: string;
+    confirmLabel: string;
+    onConfirm: () => void;
+  } | null>(null);
 
   // Block Editing Modal state
   const [isBlockModalOpen, setIsBlockModalOpen] = useState<boolean>(false);
@@ -181,16 +188,26 @@ export const PowerPointWorkspace: React.FC<PowerPointWorkspaceProps> = ({
 
   const handleDeleteTextBox = (boxId: string) => {
     if (!currentSlide) return;
-    const updated = (currentSlide.textBoxes || []).filter((b) => b.id !== boxId);
-    onUpdateSlide({
-      ...currentSlide,
-      textBoxes: updated,
+    const targetBox = (currentSlide.textBoxes || []).find((b) => b.id === boxId);
+    setConfirmDeleteDialog({
+      title: 'Xác Nhận Xóa Hộp Chữ (Text Box)?',
+      message:
+        'Hành động này sẽ xóa vĩnh viễn hộp chữ ngay lập tức trên mọi thiết bị, mọi tab và không thể khôi phục.',
+      itemPreview: targetBox?.text ? `"${targetBox.text.slice(0, 100)}"` : 'Hộp chữ tự do (Text Box)',
+      confirmLabel: 'Xóa Vĩnh Viễn',
+      onConfirm: () => {
+        const updated = (currentSlide.textBoxes || []).filter((b) => b.id !== boxId);
+        onUpdateSlide({
+          ...currentSlide,
+          textBoxes: updated,
+        });
+        if (selectedTextBoxId === boxId) {
+          setSelectedTextBoxId(null);
+        }
+        setAddedBlockToast('Đã xóa vĩnh viễn Text Box');
+        setTimeout(() => setAddedBlockToast(null), 2000);
+      },
     });
-    if (selectedTextBoxId === boxId) {
-      setSelectedTextBoxId(null);
-    }
-    setAddedBlockToast('Đã xóa Text Box');
-    setTimeout(() => setAddedBlockToast(null), 2000);
   };
 
   const handleDuplicateTextBox = (box: SlideTextBox) => {
@@ -285,16 +302,27 @@ export const PowerPointWorkspace: React.FC<PowerPointWorkspaceProps> = ({
     setTimeout(() => setAddedBlockToast(null), 2500);
   };
 
-  // Clear current slide to blank
+  // Clear current slide to blank (with confirmation)
   const handleClearSlideToBlank = () => {
     if (!currentSlide) return;
-    onUpdateSlide({
-      ...currentSlide,
-      title: 'Slide Trống',
-      blocks: [],
+    setConfirmDeleteDialog({
+      title: 'Xác Nhận Làm Mới Trống Slide?',
+      message:
+        'Toàn bộ các khối nội dung và hộp chữ trên slide hiện tại sẽ bị xóa vĩnh viễn ngay lập tức và không thể khôi phục.',
+      itemPreview: `Slide ${safeIndex + 1}: "${currentSlide.title || 'Trang chiếu'}"`,
+      confirmLabel: 'Xóa & Làm Mới Trống',
+      onConfirm: () => {
+        onUpdateSlide({
+          ...currentSlide,
+          title: 'Slide Trống',
+          blocks: [],
+          textBoxes: [],
+        });
+        setSelectedTextBoxId(null);
+        setAddedBlockToast('Đã xóa nội dung và làm mới thành slide trống');
+        setTimeout(() => setAddedBlockToast(null), 2500);
+      },
     });
-    setAddedBlockToast('Đã làm mới thành slide trống');
-    setTimeout(() => setAddedBlockToast(null), 2500);
   };
 
   // Duplicate current slide
@@ -356,17 +384,28 @@ export const PowerPointWorkspace: React.FC<PowerPointWorkspaceProps> = ({
     setTimeout(() => setAddedBlockToast(null), 2500);
   };
 
-  // Delete a block from slide
+  // Delete a block from slide (with confirmation)
   const handleDeleteBlock = (blockId: string) => {
     if (!currentSlide) return;
     const currentBlocks = getSlideBlocks(currentSlide);
-    const updatedBlocks = currentBlocks.filter((b) => b.id !== blockId);
-    onUpdateSlide({
-      ...currentSlide,
-      blocks: updatedBlocks,
+    const targetBlock = currentBlocks.find((b) => b.id === blockId);
+    setConfirmDeleteDialog({
+      title: 'Xác Nhận Xóa Khối Nội Dung?',
+      message:
+        'Khối nội dung này sẽ bị xóa vĩnh viễn ngay lập tức khỏi trang chiếu trên mọi thiết bị và không thể khôi phục.',
+      itemPreview: targetBlock?.title || targetBlock?.content || 'Khối nội dung trên Slide',
+      confirmLabel: 'Xóa Vĩnh Viễn',
+      onConfirm: () => {
+        const latestBlocks = getSlideBlocks(currentSlide);
+        const updatedBlocks = latestBlocks.filter((b) => b.id !== blockId);
+        onUpdateSlide({
+          ...currentSlide,
+          blocks: updatedBlocks,
+        });
+        setAddedBlockToast('Đã xóa vĩnh viễn khối khỏi trang chiếu');
+        setTimeout(() => setAddedBlockToast(null), 2000);
+      },
     });
-    setAddedBlockToast('Đã xóa khối khỏi trang chiếu');
-    setTimeout(() => setAddedBlockToast(null), 2000);
   };
 
   // Toggle block visibility (Ẩn / Hiện khối đối tượng trên slide)
@@ -660,18 +699,16 @@ export const PowerPointWorkspace: React.FC<PowerPointWorkspaceProps> = ({
                       >
                         <Copy className="w-3 h-3" />
                       </button>
-                      {slides.length > 1 && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleOpenDelete(slide);
-                          }}
-                          title="Xóa slide này"
-                          className="p-1 text-rose-400 hover:text-rose-200 rounded hover:bg-rose-950/50"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </button>
-                      )}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenDelete(slide);
+                        }}
+                        title="Xóa slide này"
+                        className="p-1 text-rose-400 hover:text-rose-200 rounded hover:bg-rose-950/50"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -1611,9 +1648,66 @@ export const PowerPointWorkspace: React.FC<PowerPointWorkspaceProps> = ({
         <DeleteSlideModal
           isOpen={isDeleteModalOpen}
           slide={slideToDelete}
+          totalSlides={slides.length}
           onClose={() => setIsDeleteModalOpen(false)}
           onConfirmDelete={handleConfirmDelete}
         />
+      )}
+
+      {/* Block / TextBox / Clear Slide Irreversible Delete Confirmation Modal */}
+      {confirmDeleteDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
+          <div className="bg-slate-900 border border-rose-500/40 rounded-3xl w-full max-w-md p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-start justify-between">
+              <div className="w-12 h-12 rounded-2xl bg-rose-500/20 text-rose-400 border border-rose-500/30 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <button
+                type="button"
+                onClick={() => setConfirmDeleteDialog(null)}
+                className="p-1.5 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div>
+              <h3 className="text-lg font-bold text-white">{confirmDeleteDialog.title}</h3>
+              <p className="text-xs text-rose-300 font-semibold mt-1">
+                ⚠️ Lưu ý: Xóa vĩnh viễn ngay lập tức và không thể khôi phục!
+              </p>
+              <p className="text-xs text-slate-300 mt-1.5 leading-relaxed">
+                {confirmDeleteDialog.message}
+              </p>
+              {confirmDeleteDialog.itemPreview && (
+                <div className="mt-3 p-3 rounded-xl bg-slate-950/90 border border-slate-800 text-xs text-slate-300 line-clamp-2 font-medium">
+                  {confirmDeleteDialog.itemPreview}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setConfirmDeleteDialog(null)}
+                className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs transition-colors cursor-pointer"
+              >
+                Hủy Bỏ
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  confirmDeleteDialog.onConfirm();
+                  setConfirmDeleteDialog(null);
+                }}
+                className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs shadow-lg shadow-rose-600/30 flex items-center gap-2 transition-all cursor-pointer"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>{confirmDeleteDialog.confirmLabel}</span>
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Block Edit & Customization Modal */}

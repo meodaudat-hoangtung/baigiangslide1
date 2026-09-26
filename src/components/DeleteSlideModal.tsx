@@ -35,10 +35,14 @@ export const DeleteSlideModal: React.FC<DeleteSlideModalProps> = ({
             <Trash2 className="w-7 h-7" />
           </div>
 
-          <h3 className="text-xl font-bold text-white">Xác Nhận Xóa Slide</h3>
+          <h3 className="text-xl font-bold text-white">Xác Nhận Xóa Vĩnh Viễn Slide</h3>
+
+          <p className="text-xs text-rose-300 font-semibold">
+            ⚠️ Lưu ý: Xóa ngay lập tức trên mọi thiết bị, mọi tab và không thể khôi phục!
+          </p>
 
           <p className="text-sm text-slate-300 leading-relaxed">
-            Bạn có chắc chắn muốn xóa{' '}
+            Bạn có chắc chắn muốn xóa vĩnh viễn{' '}
             <span className="font-bold text-rose-300">
               Slide {slide.slideNumber}: "{slide.title}"
             </span>{' '}

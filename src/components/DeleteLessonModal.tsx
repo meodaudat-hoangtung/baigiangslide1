@@ -34,9 +34,12 @@ export const DeleteLessonModal: React.FC<DeleteLessonModalProps> = ({
         </div>
 
         <div>
-          <h3 className="text-lg font-bold text-white">Xác Nhận Xóa Bài Giảng?</h3>
+          <h3 className="text-lg font-bold text-white">Xác Nhận Xóa Vĩnh Viễn Bài Giảng?</h3>
+          <p className="text-xs text-rose-300 font-semibold mt-1">
+            ⚠️ Lưu ý: Sau khi xác nhận, bài giảng sẽ bị xóa ngay lập tức trên mọi thiết bị, mọi tab và không thể khôi phục!
+          </p>
           <p className="text-xs text-slate-400 mt-1">
-            Hành động này sẽ xóa toàn bộ nội dung bài giảng, slide và bộ câu hỏi đi kèm.
+            Hành động này sẽ xóa vĩnh viễn toàn bộ nội dung bài giảng, các trang chiếu (slides) và bộ câu hỏi đi kèm khỏi hệ thống đám mây.
           </p>
           <div className="mt-3 p-3.5 rounded-2xl bg-slate-950/90 border border-slate-800 space-y-1.5">
             <h4 className="font-bold text-sm text-white">{lesson.title}</h4>

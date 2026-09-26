@@ -34,9 +34,12 @@ export const DeleteQuestionModal: React.FC<DeleteQuestionModalProps> = ({
         </div>
 
         <div>
-          <h3 className="text-lg font-bold text-white">Xác Nhận Xóa Câu Hỏi?</h3>
+          <h3 className="text-lg font-bold text-white">Xác Nhận Xóa Vĩnh Viễn Câu Hỏi?</h3>
+          <p className="text-xs text-rose-300 font-semibold mt-1">
+            ⚠️ Lưu ý: Sau khi xác nhận, câu hỏi sẽ bị xóa ngay lập tức trên mọi thiết bị, mọi tab và không thể khôi phục!
+          </p>
           <p className="text-xs text-slate-400 mt-1">
-            Bạn có chắc chắn muốn xóa <span className="text-rose-300 font-semibold">Câu #{question.questionNumber}</span> khỏi bộ câu hỏi luyện tập?
+            Bạn có chắc chắn muốn xóa vĩnh viễn <span className="text-rose-300 font-semibold">Câu #{question.questionNumber}</span> khỏi bộ câu hỏi củng cố?
           </p>
           <div className="mt-3 p-3 rounded-xl bg-slate-950/80 border border-slate-800 text-xs text-slate-300 line-clamp-2 italic">
             "{question.prompt}"
