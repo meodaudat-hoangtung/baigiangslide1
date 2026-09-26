@@ -516,7 +516,7 @@ export const QuizSection: React.FC<QuizSectionProps> = ({
 
           {/* QUESTION NUMBERS GRID (Chỉ thể hiện bằng các số 1, 2, 3,...) */}
           {filteredQuestions.length > 0 ? (
-            <div className="grid grid-cols-5 sm:grid-cols-6 lg:grid-cols-5 xl:grid-cols-6 gap-2 max-h-[60vh] overflow-y-auto pr-1 custom-scrollbar">
+            <div className="grid grid-cols-5 sm:grid-cols-6 lg:grid-cols-5 xl:grid-cols-6 gap-2.5 max-h-[60vh] overflow-y-auto p-1.5 custom-scrollbar place-items-center">
               {filteredQuestions.map((q, idx) => {
                 const isSelected = selectedQuestionId === q.id;
                 const status = getQuestionStatus(q);
@@ -528,12 +528,12 @@ export const QuizSection: React.FC<QuizSectionProps> = ({
                   <button
                     key={q.id}
                     onClick={() => setSelectedQuestionId(q.id)}
-                    className={`relative group h-10 sm:h-11 rounded-xl flex flex-col items-center justify-center transition-all cursor-pointer border ${
+                    className={`relative group w-11 h-11 sm:w-12 sm:h-12 aspect-square rounded-full flex flex-col items-center justify-center transition-all cursor-pointer border-2 ${
                       isSelected
-                        ? 'bg-gradient-to-br from-indigo-600 via-indigo-700 to-emerald-600 text-white font-black border-emerald-400 ring-2 ring-emerald-400/80 shadow-lg shadow-emerald-500/20 scale-105 z-10'
+                        ? 'bg-gradient-to-br from-indigo-600 via-indigo-700 to-emerald-600 text-white font-black border-orange-400 ring-2 ring-orange-400/50 shadow-[0_0_12px_rgba(251,146,60,0.45)] scale-105 z-10'
                         : status.isAnswered
-                        ? 'bg-emerald-950/40 text-emerald-300 border-emerald-500/40 hover:border-emerald-400 hover:bg-emerald-950/60'
-                        : 'bg-slate-800/70 text-slate-200 border-slate-700/80 hover:border-slate-500 hover:bg-slate-800'
+                        ? 'bg-emerald-950/50 text-emerald-300 border-orange-400/85 hover:border-orange-300 hover:bg-emerald-950/70 shadow-[0_0_6px_rgba(251,146,60,0.2)]'
+                        : 'bg-slate-800/80 text-slate-100 border-orange-400/80 hover:border-orange-300 hover:bg-slate-800 shadow-[0_0_6px_rgba(251,146,60,0.18)]'
                     }`}
                     title={`Câu ${qNum} (${typeBadge.label})`}
                   >
@@ -542,11 +542,11 @@ export const QuizSection: React.FC<QuizSectionProps> = ({
                       {qNum}
                     </span>
 
-                    {/* Mini Type indicator pill */}
+                    {/* Mini Type indicator label */}
                     <span
-                      className={`text-[8.5px] font-semibold uppercase leading-none mt-0.5 px-0.5 rounded ${
+                      className={`text-[8px] font-semibold uppercase leading-none mt-0.5 ${
                         isSelected
-                          ? 'text-emerald-100'
+                          ? 'text-orange-100'
                           : 'text-slate-400'
                       }`}
                     >
@@ -554,12 +554,14 @@ export const QuizSection: React.FC<QuizSectionProps> = ({
                     </span>
 
                     {/* Top status indicator dot */}
-                    <div className="absolute top-1 right-1 flex items-center gap-0.5">
+                    <div className="absolute -top-0.5 -right-0.5 flex items-center gap-0.5">
                       {isSolRevealed && (
-                        <Eye className={`w-2 h-2 ${isSelected ? 'text-white' : 'text-emerald-400'}`} />
+                        <span className="w-3.5 h-3.5 rounded-full bg-slate-900 border border-orange-400/80 flex items-center justify-center shadow-sm">
+                          <Eye className={`w-2 h-2 ${isSelected ? 'text-orange-300' : 'text-emerald-400'}`} />
+                        </span>
                       )}
                       {status.isAnswered ? (
-                        <span className={`w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-white' : 'bg-emerald-400'}`} />
+                        <span className={`w-2.5 h-2.5 rounded-full border border-slate-900 shadow-sm ${isSelected ? 'bg-orange-300' : 'bg-emerald-400'}`} />
                       ) : null}
                     </div>
                   </button>
