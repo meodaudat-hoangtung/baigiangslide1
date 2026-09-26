@@ -260,6 +260,18 @@ export const PowerPointWorkspace: React.FC<PowerPointWorkspaceProps> = ({
         return;
       }
 
+      // When a Text Box is selected, arrow keys move the Text Box instead of switching slides
+      if (
+        selectedTextBoxId &&
+        !readOnly &&
+        (e.key === 'ArrowLeft' ||
+          e.key === 'ArrowRight' ||
+          e.key === 'ArrowUp' ||
+          e.key === 'ArrowDown')
+      ) {
+        return;
+      }
+
       if (e.key === 'ArrowRight' || e.key === 'PageDown') {
         if (safeIndex < slides.length - 1) {
           onSelectSlide(safeIndex + 1);
@@ -289,7 +301,7 @@ export const PowerPointWorkspace: React.FC<PowerPointWorkspaceProps> = ({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [safeIndex, slides.length, onSelectSlide, isFullscreen]);
+  }, [safeIndex, slides.length, onSelectSlide, isFullscreen, selectedTextBoxId, readOnly]);
 
   // Add a blank slide after current slide
   const handleAddNewBlankSlide = () => {
@@ -1202,7 +1214,12 @@ export const PowerPointWorkspace: React.FC<PowerPointWorkspaceProps> = ({
                   width: '960px',
                   height: '540px',
                 }}
-                onClick={() => setSelectedTextBoxId(null)}
+                onMouseDown={(e) => {
+                  const target = e.target as HTMLElement | null;
+                  if (!target?.closest('[data-textbox-id]')) {
+                    setSelectedTextBoxId(null);
+                  }
+                }}
               >
               {/* PowerPoint Floating Text Boxes Overlay */}
               <SlideTextBoxOverlay

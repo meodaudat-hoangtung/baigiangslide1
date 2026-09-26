@@ -106,6 +106,8 @@ export default function App() {
   );
 
   const lastWorkspaceSyncTimeRef = useRef<number>(0);
+  const lastLocalSaveStampRef = useRef<number>(0);
+  const saveDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Helper to apply incoming single-lesson save from real-time streams (SSE / BroadcastChannel)
   const applyIncomingLessonSave = useCallback((incomingLesson: MathLesson) => {
@@ -482,9 +484,12 @@ export default function App() {
   // Persist current lessons state across IndexedDB, localStorage, Express Server, and Firestore
   const saveLessonToAllTiers = useCallback((updatedLesson: MathLesson) => {
     setIsSyncing(true);
+    const nextStamp = Math.max(Date.now(), lastLocalSaveStampRef.current + 1);
+    lastLocalSaveStampRef.current = nextStamp;
+
     const stampedLesson: MathLesson = {
       ...updatedLesson,
-      updatedAt: Date.now(),
+      updatedAt: nextStamp,
     };
     setLessons((prev) => {
       const idx = prev.findIndex((l) => l.id === stampedLesson.id);
@@ -496,17 +501,26 @@ export default function App() {
         next = [stampedLesson, ...prev];
       }
 
-      StorageService.saveLesson(stampedLesson, next)
-        .then(({ isSynced: synced }) => {
-          setIsSynced(synced);
-        })
-        .catch((err) => {
-          console.error('Save failed:', err);
-          setIsSynced(false);
-        })
-        .finally(() => {
-          setIsSyncing(false);
-        });
+      try {
+        localStorage.setItem('mathslide_lessons_v2', JSON.stringify(next));
+      } catch {}
+
+      if (saveDebounceTimerRef.current) {
+        clearTimeout(saveDebounceTimerRef.current);
+      }
+      saveDebounceTimerRef.current = setTimeout(() => {
+        StorageService.saveLesson(stampedLesson, next)
+          .then(({ isSynced: synced }) => {
+            setIsSynced(synced);
+          })
+          .catch((err) => {
+            console.error('Save failed:', err);
+            setIsSynced(false);
+          })
+          .finally(() => {
+            setIsSyncing(false);
+          });
+      }, 160);
 
       return next;
     });

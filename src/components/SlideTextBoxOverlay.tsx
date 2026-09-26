@@ -221,6 +221,25 @@ export const SlideTextBoxOverlay: React.FC<SlideTextBoxOverlayProps> = ({
   textBoxesRef.current = textBoxes;
   const onUpdateTextBoxRef = useRef(onUpdateTextBox);
   onUpdateTextBoxRef.current = onUpdateTextBox;
+  const onSelectBoxRef = useRef(onSelectBox);
+  onSelectBoxRef.current = onSelectBox;
+
+  // Root overlay container reference (100% width & height of the slide canvas)
+  const overlayRef = useRef<HTMLDivElement>(null);
+
+  // Live local overrides during drag/resize for 60fps+ zero-latency movement without network/SSE jitter
+  const [liveOverrides, setLiveOverrides] = useState<
+    Record<string, { x?: number; y?: number; width?: number }>
+  >({});
+  const [activeInteractionId, setActiveInteractionId] = useState<string | null>(null);
+  const liveOverridesRef = useRef<Record<string, { x?: number; y?: number; width?: number }>>({});
+
+  // Clear editingTextId if another box is selected or deselected
+  useEffect(() => {
+    if (editingTextId && selectedBoxId !== editingTextId) {
+      setEditingTextId(null);
+    }
+  }, [selectedBoxId, editingTextId]);
 
   // Dragging state
   const draggingBoxRef = useRef<{
@@ -231,6 +250,11 @@ export const SlideTextBoxOverlay: React.FC<SlideTextBoxOverlayProps> = ({
     initialY: number;
     containerWidth: number;
     containerHeight: number;
+    maxX: number;
+    maxY: number;
+    hasMoved: boolean;
+    wasAlreadySelected: boolean;
+    openEditOnClick: boolean;
   } | null>(null);
 
   // Resizing state
@@ -239,48 +263,183 @@ export const SlideTextBoxOverlay: React.FC<SlideTextBoxOverlayProps> = ({
     startX: number;
     initialWidth: number;
     containerWidth: number;
+    hasMoved: boolean;
   } | null>(null);
 
-  // Mouse move handler for dragging and resizing
+  // Helper to start dragging a text box accurately relative to the slide overlay container
+  const startDraggingBox = (
+    e: React.MouseEvent,
+    box: SlideTextBox,
+    currentX: number,
+    currentY: number,
+    options?: { openEditOnClick?: boolean; immediateDrag?: boolean }
+  ) => {
+    if (!isEditable || e.button !== 0) return;
+    const overlayEl = overlayRef.current;
+    if (!overlayEl) return;
+    const rect = overlayEl.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+
+    // Measure actual box size relative to slide so clamping never jumps
+    const boxEl = (e.currentTarget as HTMLElement).closest('[data-textbox-id]') as HTMLElement | null;
+    const boxRect = boxEl ? boxEl.getBoundingClientRect() : null;
+    const boxWidthPercent = boxRect ? (boxRect.width / rect.width) * 100 : (box.width || 35);
+    const boxHeightPercent = boxRect ? (boxRect.height / rect.height) * 100 : 12;
+
+    const maxX = Math.max(currentX, Math.min(96, Math.max(10, 100 - boxWidthPercent * 0.6)));
+    const maxY = Math.max(currentY, Math.min(94, Math.max(10, 100 - boxHeightPercent * 0.7)));
+
+    const wasAlreadySelected = selectedBoxId === box.id;
+    if (onSelectBoxRef.current && !wasAlreadySelected) {
+      onSelectBoxRef.current(box.id);
+    }
+
+    draggingBoxRef.current = {
+      id: box.id,
+      startX: e.clientX,
+      startY: e.clientY,
+      initialX: currentX,
+      initialY: currentY,
+      containerWidth: rect.width,
+      containerHeight: rect.height,
+      maxX,
+      maxY,
+      hasMoved: !!options?.immediateDrag,
+      wasAlreadySelected,
+      openEditOnClick: !!options?.openEditOnClick,
+    };
+
+    if (options?.immediateDrag) {
+      setActiveInteractionId(box.id);
+    }
+  };
+
+  // Mouse move & mouse up handlers for smooth 1:1 dragging and resizing
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
-      // Dragging
-      if (draggingBoxRef.current && onUpdateTextBoxRef.current) {
-        const { id, startX, startY, initialX, initialY, containerWidth, containerHeight } = draggingBoxRef.current;
-        const deltaXPercent = ((e.clientX - startX) / containerWidth) * 100;
-        const deltaYPercent = ((e.clientY - startY) / containerHeight) * 100;
+      // 1. Handle Dragging
+      if (draggingBoxRef.current) {
+        const drag = draggingBoxRef.current;
+        const dxPx = e.clientX - drag.startX;
+        const dyPx = e.clientY - drag.startY;
 
-        const target = textBoxesRef.current.find((b) => b.id === id);
-        if (target) {
-          const newX = Math.max(0, Math.min(85, initialX + deltaXPercent));
-          const newY = Math.max(0, Math.min(85, initialY + deltaYPercent));
-          onUpdateTextBoxRef.current({
-            ...target,
-            x: Math.round(newX * 10) / 10,
-            y: Math.round(newY * 10) / 10,
-          });
+        // Require a small 3px movement threshold when clicking directly on box body before starting drag
+        if (!drag.hasMoved) {
+          if (Math.hypot(dxPx, dyPx) < 3) {
+            return;
+          }
+          drag.hasMoved = true;
+          setActiveInteractionId(drag.id);
         }
+
+        // Recalculate container rect dynamically in case page scrolled
+        const rect = overlayRef.current?.getBoundingClientRect();
+        const cWidth = rect && rect.width > 0 ? rect.width : drag.containerWidth;
+        const cHeight = rect && rect.height > 0 ? rect.height : drag.containerHeight;
+
+        const deltaXPercent = (dxPx / cWidth) * 100;
+        const deltaYPercent = (dyPx / cHeight) * 100;
+
+        const rawX = drag.initialX + deltaXPercent;
+        const rawY = drag.initialY + deltaYPercent;
+
+        const clampedX = Math.max(0, Math.min(drag.maxX, rawX));
+        const clampedY = Math.max(0, Math.min(drag.maxY, rawY));
+
+        // 0.01% precision (<0.1px on 960px canvas) for ultra-smooth movement
+        const nextX = Math.round(clampedX * 100) / 100;
+        const nextY = Math.round(clampedY * 100) / 100;
+
+        const nextOverride = {
+          ...liveOverridesRef.current[drag.id],
+          x: nextX,
+          y: nextY,
+        };
+        liveOverridesRef.current = {
+          ...liveOverridesRef.current,
+          [drag.id]: nextOverride,
+        };
+        setLiveOverrides({ ...liveOverridesRef.current });
       }
 
-      // Resizing
-      if (resizingBoxRef.current && onUpdateTextBoxRef.current) {
-        const { id, startX, initialWidth, containerWidth } = resizingBoxRef.current;
-        const deltaWidthPercent = ((e.clientX - startX) / containerWidth) * 100;
+      // 2. Handle Resizing
+      if (resizingBoxRef.current) {
+        const resize = resizingBoxRef.current;
+        const dxPx = e.clientX - resize.startX;
+        resize.hasMoved = true;
 
-        const target = textBoxesRef.current.find((b) => b.id === id);
-        if (target) {
-          const newWidth = Math.max(15, Math.min(95, initialWidth + deltaWidthPercent));
-          onUpdateTextBoxRef.current({
-            ...target,
-            width: Math.round(newWidth),
-          });
-        }
+        const rect = overlayRef.current?.getBoundingClientRect();
+        const cWidth = rect && rect.width > 0 ? rect.width : resize.containerWidth;
+
+        const deltaWidthPercent = (dxPx / cWidth) * 100;
+        const newWidth = Math.max(12, Math.min(96, resize.initialWidth + deltaWidthPercent));
+        const roundedWidth = Math.round(newWidth * 10) / 10;
+
+        const nextOverride = {
+          ...liveOverridesRef.current[resize.id],
+          width: roundedWidth,
+        };
+        liveOverridesRef.current = {
+          ...liveOverridesRef.current,
+          [resize.id]: nextOverride,
+        };
+        setLiveOverrides({ ...liveOverridesRef.current });
       }
     };
 
     const handleMouseUp = () => {
-      draggingBoxRef.current = null;
-      resizingBoxRef.current = null;
+      if (draggingBoxRef.current) {
+        const drag = draggingBoxRef.current;
+        const override = liveOverridesRef.current[drag.id];
+        draggingBoxRef.current = null;
+        setActiveInteractionId(null);
+
+        if (drag.hasMoved && override && onUpdateTextBoxRef.current) {
+          const target = textBoxesRef.current.find((b) => b.id === drag.id);
+          if (target) {
+            onUpdateTextBoxRef.current({
+              ...target,
+              x: override.x !== undefined ? override.x : target.x,
+              y: override.y !== undefined ? override.y : target.y,
+            });
+          }
+        } else if (!drag.hasMoved && drag.openEditOnClick && drag.wasAlreadySelected) {
+          // Single click without dragging on an already-selected box opens text edit mode
+          setEditingTextId(drag.id);
+        }
+
+        // Clear live override after committing
+        if (liveOverridesRef.current[drag.id]) {
+          const copy = { ...liveOverridesRef.current };
+          delete copy[drag.id];
+          liveOverridesRef.current = copy;
+          setLiveOverrides(copy);
+        }
+      }
+
+      if (resizingBoxRef.current) {
+        const resize = resizingBoxRef.current;
+        const override = liveOverridesRef.current[resize.id];
+        resizingBoxRef.current = null;
+        setActiveInteractionId(null);
+
+        if (resize.hasMoved && override && onUpdateTextBoxRef.current) {
+          const target = textBoxesRef.current.find((b) => b.id === resize.id);
+          if (target) {
+            onUpdateTextBoxRef.current({
+              ...target,
+              width: override.width !== undefined ? override.width : target.width,
+            });
+          }
+        }
+
+        if (liveOverridesRef.current[resize.id]) {
+          const copy = { ...liveOverridesRef.current };
+          delete copy[resize.id];
+          liveOverridesRef.current = copy;
+          setLiveOverrides(copy);
+        }
+      }
     };
 
     window.addEventListener('mousemove', handleMouseMove);
@@ -291,17 +450,86 @@ export const SlideTextBoxOverlay: React.FC<SlideTextBoxOverlayProps> = ({
     };
   }, []);
 
+  // Keyboard arrow movement when a Text Box is selected (and not currently typing inside textarea)
+  useEffect(() => {
+    if (!isEditable || !selectedBoxId || editingTextId) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const targetEl = e.target as HTMLElement | null;
+      if (
+        targetEl &&
+        (targetEl.tagName === 'INPUT' ||
+          targetEl.tagName === 'TEXTAREA' ||
+          targetEl.isContentEditable)
+      ) {
+        return;
+      }
+
+      if (
+        e.key === 'ArrowLeft' ||
+        e.key === 'ArrowRight' ||
+        e.key === 'ArrowUp' ||
+        e.key === 'ArrowDown'
+      ) {
+        const targetBox = textBoxesRef.current.find((b) => b.id === selectedBoxId);
+        if (!targetBox || !onUpdateTextBoxRef.current) return;
+
+        e.preventDefault();
+        e.stopPropagation();
+
+        // Step size: Shift = 0.2% (micro adjustment), Ctrl/Meta = 2.5% (fast), Normal = 0.8%
+        const step = e.shiftKey ? 0.2 : e.ctrlKey || e.metaKey ? 2.5 : 0.8;
+        const curX = targetBox.x !== undefined ? targetBox.x : 20;
+        const curY = targetBox.y !== undefined ? targetBox.y : 30;
+
+        let nextX = curX;
+        let nextY = curY;
+
+        if (e.key === 'ArrowLeft') nextX = Math.max(0, curX - step);
+        if (e.key === 'ArrowRight') nextX = Math.min(92, curX + step);
+        if (e.key === 'ArrowUp') nextY = Math.max(0, curY - step);
+        if (e.key === 'ArrowDown') nextY = Math.min(92, curY + step);
+
+        nextX = Math.round(nextX * 100) / 100;
+        nextY = Math.round(nextY * 100) / 100;
+
+        if (nextX !== curX || nextY !== curY) {
+          onUpdateTextBoxRef.current({
+            ...targetBox,
+            x: nextX,
+            y: nextY,
+          });
+        }
+      } else if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey) {
+        // Pressing Enter on a selected box opens text editing
+        e.preventDefault();
+        setEditingTextId(selectedBoxId);
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        if (onSelectBoxRef.current) onSelectBoxRef.current(null);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown, true);
+    };
+  }, [isEditable, selectedBoxId, editingTextId]);
+
   if (!textBoxes || textBoxes.length === 0) return null;
 
   return (
-    <div className="absolute inset-0 pointer-events-none z-20 overflow-visible">
+    <div ref={overlayRef} className="absolute inset-0 pointer-events-none z-20 overflow-visible">
       {textBoxes.map((box, idx) => {
         const isSelected = isEditable && selectedBoxId === box.id;
         const isEditing = isSelected && editingTextId === box.id;
+        const isInteracting = activeInteractionId === box.id;
+        const boxOverride = liveOverrides[box.id];
 
-        const posX = box.x !== undefined ? box.x : 20;
-        const posY = box.y !== undefined ? box.y : 30;
-        const width = box.width !== undefined ? `${box.width}%` : 'auto';
+        const posX = boxOverride?.x !== undefined ? boxOverride.x : box.x !== undefined ? box.x : 20;
+        const posY = boxOverride?.y !== undefined ? boxOverride.y : box.y !== undefined ? box.y : 30;
+        const widthVal = boxOverride?.width !== undefined ? boxOverride.width : box.width;
+        const width = widthVal !== undefined ? `${widthVal}%` : 'auto';
         const fontSize = box.fontSize || 24;
         const color = box.color || '#ffffff';
         const bg = box.backgroundColor || 'transparent';
@@ -414,14 +642,23 @@ export const SlideTextBoxOverlay: React.FC<SlideTextBoxOverlayProps> = ({
           ? `${box.id}-step-${boxStep === lastTriggeredStep ? `trig-${lastTriggeredStep}` : 'done'}`
           : `${box.id}-${animKey}-${animationPlayTrigger || 0}`;
 
+        const effectiveAnimClass = isInteracting ? '' : animClass;
+        const placeToolbarAbove = posY > 72;
+
         return (
           <div
             key={elementKey}
             data-textbox-id={box.id}
-            className={`absolute pointer-events-auto select-none ${animClass} ${
+            className={`absolute pointer-events-auto select-none ${effectiveAnimClass} ${
               isSelected
                 ? 'ring-2 ring-indigo-500 ring-offset-2 ring-offset-transparent shadow-xl rounded-lg'
-                : 'hover:ring-1 hover:ring-indigo-400/60 rounded-lg cursor-pointer'
+                : 'hover:ring-1 hover:ring-indigo-400/60 rounded-lg'
+            } ${
+              isEditable && !isEditing
+                ? isInteracting
+                  ? 'cursor-grabbing z-40'
+                  : 'cursor-move'
+                : ''
             } ${isEditable && box.isHidden ? 'opacity-70 border-2 border-dashed border-amber-400/80 bg-amber-950/20' : ''}`}
             style={
               {
@@ -433,19 +670,30 @@ export const SlideTextBoxOverlay: React.FC<SlideTextBoxOverlayProps> = ({
                 border: borderWidth > 0 ? `${borderWidth}px solid ${borderColor}` : undefined,
                 color: color,
                 textAlign: textAlign,
+                willChange: isInteracting ? 'left, top, width' : undefined,
+                transition: isInteracting ? 'none' : undefined,
                 '--tb-duration': `${animDuration}s`,
                 '--tb-delay': `${animDelay}s`,
               } as React.CSSProperties
             }
+            onMouseDown={(e) => {
+              if (!isEditable || isEditing) return;
+              e.stopPropagation();
+              startDraggingBox(e, box, posX, posY, {
+                openEditOnClick: true,
+                immediateDrag: false,
+              });
+            }}
             onClick={(e) => {
               e.stopPropagation();
-              if (isEditable && onSelectBox) {
+              if (isEditable && onSelectBox && selectedBoxId !== box.id) {
                 onSelectBox(box.id);
               }
             }}
             onDoubleClick={(e) => {
               e.stopPropagation();
               if (isEditable) {
+                if (onSelectBox) onSelectBox(box.id);
                 setEditingTextId(box.id);
               }
             }}
@@ -506,34 +754,32 @@ export const SlideTextBoxOverlay: React.FC<SlideTextBoxOverlayProps> = ({
               </button>
             )}
 
-            {/* POWERPOINT FLOATING FORMATTING MINI-TOOLBAR (BÊN DƯỚI KHUNG TEXT BOX) */}
+            {/* POWERPOINT FLOATING FORMATTING MINI-TOOLBAR (TỰ ĐỘNG NẰM DƯỚI HOẶC TRÊN KHUNG TEXT BOX) */}
             {isSelected && isEditable && (
               <div
-                className="absolute top-full mt-2 left-0 z-50 bg-slate-900/98 border border-slate-700 rounded-xl px-2 py-1 shadow-2xl flex items-center gap-1 text-white text-xs select-none backdrop-blur-md animate-in fade-in zoom-in-95 duration-100 whitespace-nowrap"
+                className={`absolute ${
+                  placeToolbarAbove ? 'bottom-full mb-2' : 'top-full mt-2'
+                } left-0 z-50 bg-slate-900/98 border border-slate-700 rounded-xl px-2 py-1 shadow-2xl flex items-center gap-1 text-white text-xs select-none backdrop-blur-md whitespace-nowrap ${
+                  isInteracting ? 'pointer-events-none opacity-80' : ''
+                }`}
+                onMouseDown={(e) => e.stopPropagation()}
                 onClick={(e) => e.stopPropagation()}
               >
                 {/* Drag Handle */}
                 <div
                   onMouseDown={(e) => {
+                    e.preventDefault();
                     e.stopPropagation();
-                    const container = e.currentTarget.closest('.aspect-video') || e.currentTarget.offsetParent;
-                    if (!container) return;
-                    const rect = container.getBoundingClientRect();
-                    draggingBoxRef.current = {
-                      id: box.id,
-                      startX: e.clientX,
-                      startY: e.clientY,
-                      initialX: posX,
-                      initialY: posY,
-                      containerWidth: rect.width,
-                      containerHeight: rect.height,
-                    };
+                    startDraggingBox(e, box, posX, posY, {
+                      openEditOnClick: false,
+                      immediateDrag: true,
+                    });
                   }}
-                  title="Giữ chuột và kéo để di chuyển vị trí Text Box"
-                  className="p-1 text-slate-400 hover:text-white cursor-grab active:cursor-grabbing rounded hover:bg-slate-800 flex items-center gap-1"
+                  title="Giữ chuột để kéo hoặc dùng các phím mũi tên (↑ ↓ ← →) trên bàn phím để di chuyển Text Box"
+                  className="p-1 text-slate-300 hover:text-white cursor-grab active:cursor-grabbing rounded hover:bg-slate-800 flex items-center gap-1"
                 >
                   <Move className="w-3.5 h-3.5 text-indigo-400" />
-                  <span className="text-[10px] font-bold hidden sm:inline">Kéo</span>
+                  <span className="text-[10px] font-bold hidden sm:inline">Kéo / Phím ↑↓←→</span>
                 </div>
 
                 <div className="w-px h-4 bg-slate-700" />
@@ -1009,14 +1255,20 @@ export const SlideTextBoxOverlay: React.FC<SlideTextBoxOverlayProps> = ({
               ) : (
                 /* RENDERED SLIDE DISPLAY */
                 <div
-                  className="leading-relaxed cursor-text min-h-[32px] p-1.5 transition-colors rounded hover:bg-white/5"
-                  onClick={(e) => {
-                    if (isEditable) {
-                      e.stopPropagation();
-                      if (onSelectBox) onSelectBox(box.id);
-                      setEditingTextId(box.id);
-                    }
-                  }}
+                  className={`leading-relaxed min-h-[32px] p-1.5 transition-colors rounded ${
+                    isEditable
+                      ? isInteracting
+                        ? 'cursor-grabbing'
+                        : 'cursor-move hover:bg-white/5'
+                      : ''
+                  }`}
+                  title={
+                    isEditable
+                      ? isSelected
+                        ? 'Giữ chuột kéo để di chuyển, dùng phím mũi tên ↑↓←→ để căn chỉnh, hoặc nhấp vào đây để sửa chữ'
+                        : 'Nhấp để chọn hoặc giữ chuột kéo để di chuyển vị trí Text Box'
+                      : undefined
+                  }
                   style={{
                     fontSize: `${fontSize}px`,
                     fontWeight: fontWeight,
@@ -1039,19 +1291,23 @@ export const SlideTextBoxOverlay: React.FC<SlideTextBoxOverlayProps> = ({
               {isSelected && isEditable && (
                 <div
                   onMouseDown={(e) => {
+                    e.preventDefault();
                     e.stopPropagation();
-                    const container = e.currentTarget.closest('.aspect-video') || e.currentTarget.offsetParent;
-                    if (!container) return;
-                    const rect = container.getBoundingClientRect();
+                    const overlayEl = overlayRef.current;
+                    if (!overlayEl) return;
+                    const rect = overlayEl.getBoundingClientRect();
+                    if (rect.width <= 0) return;
+                    setActiveInteractionId(box.id);
                     resizingBoxRef.current = {
                       id: box.id,
                       startX: e.clientX,
-                      initialWidth: box.width || 35,
+                      initialWidth: widthVal !== undefined ? widthVal : 35,
                       containerWidth: rect.width,
+                      hasMoved: false,
                     };
                   }}
                   title="Kéo để chỉnh chiều rộng Text Box"
-                  className="absolute bottom-0 right-0 w-3 h-3 bg-indigo-500 border border-white rounded-xs cursor-ew-resize hover:scale-125 transition-transform"
+                  className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-indigo-500 border border-white rounded-xs cursor-ew-resize hover:scale-125 transition-transform z-30"
                 />
               )}
             </div>
